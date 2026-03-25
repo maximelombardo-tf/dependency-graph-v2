@@ -1,11 +1,23 @@
-import { Component, inject, signal, effect, computed } from '@angular/core';
-import { transferArrayItem, moveItemInArray } from '@angular/cdk/drag-drop';
+import {
+  Component,
+  inject,
+  signal,
+  effect,
+  computed,
+  ViewChild,
+  ElementRef,
+  AfterViewInit,
+  HostListener,
+} from '@angular/core';
 import { SelectorComponent } from '../selector/selector.component';
 import { KanbanColumnComponent } from './kanban-column/kanban-column.component';
+import { DependencyOverlayComponent } from './dependency-overlay/dependency-overlay.component';
 import { AuthService } from '../../core/services/auth.service';
 import { TeamConfigService } from '../../core/services/team-config.service';
 import { NotionService } from '../../core/services/notion.service';
+import { DependencyService } from '../../core/services/dependency.service';
 import { Ticket } from '../../core/models/ticket.model';
+import { Dependency } from '../../core/models/dependency.model';
 import { COLUMN_DEFINITIONS, ColumnKey } from '../../core/models/team-config.model';
 
 interface ColumnData {
@@ -17,7 +29,7 @@ interface ColumnData {
 @Component({
   selector: 'app-board',
   standalone: true,
-  imports: [SelectorComponent, KanbanColumnComponent],
+  imports: [SelectorComponent, KanbanColumnComponent, DependencyOverlayComponent],
   template: `
     <div class="min-h-screen flex flex-col">
       <header class="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-200 shrink-0">
@@ -50,20 +62,34 @@ interface ColumnData {
             </div>
           </div>
         } @else {
-          <div class="flex-1 overflow-x-auto p-4">
-            <div class="flex gap-4 h-full" style="min-height: calc(100vh - 140px);">
+          <div
+            #boardContainer
+            class="flex-1 overflow-auto relative"
+            [class.cursor-crosshair]="dependencyService.isLinkMode()"
+            (mousemove)="onMouseMove($event)"
+            (click)="onBoardClick($event)"
+          >
+            <div class="flex gap-4 p-4" style="min-height: calc(100vh - 140px);">
               @for (column of columns(); track column.key) {
                 <app-kanban-column
                   [columnName]="column.displayName"
                   [columnId]="column.key"
                   [tickets]="column.tickets"
                   [connectedTo]="columnIds()"
+                  [isLinkMode]="dependencyService.isLinkMode()"
                   (ticketDropped)="onTicketDropped($event)"
                   (linkStart)="onLinkStart($event)"
                   (linkEnd)="onLinkEnd($event)"
                 />
               }
             </div>
+
+            <app-dependency-overlay
+              [dependencies]="dependencies()"
+              [ticketElements]="ticketElementsMap()"
+              [scrollContainer]="boardContainerEl!"
+              (deleteDependency)="onDeleteDependency($event)"
+            />
           </div>
         }
       } @else {
@@ -74,14 +100,20 @@ interface ColumnData {
     </div>
   `,
 })
-export class BoardComponent {
+export class BoardComponent implements AfterViewInit {
   readonly authService = inject(AuthService);
   readonly teamConfigService = inject(TeamConfigService);
+  readonly dependencyService = inject(DependencyService);
   private readonly notionService = inject(NotionService);
+
+  @ViewChild('boardContainer') boardContainerRef!: ElementRef<HTMLElement>;
+  boardContainerEl: HTMLElement | null = null;
 
   readonly tickets = signal<Ticket[]>([]);
   readonly loading = signal(false);
   readonly error = signal<string | null>(null);
+  readonly dependencies = signal<Dependency[]>([]);
+  readonly ticketElementsMap = signal<Map<string, HTMLElement>>(new Map());
 
   readonly columns = computed<ColumnData[]>(() => {
     const team = this.teamConfigService.selectedTeam();
@@ -110,6 +142,17 @@ export class BoardComponent {
     });
   }
 
+  ngAfterViewInit(): void {
+    this.boardContainerEl = this.boardContainerRef?.nativeElement ?? null;
+    // Refresh ticket element map after view renders
+    setTimeout(() => this.refreshTicketElementMap(), 100);
+  }
+
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    this.dependencyService.cancelLink();
+  }
+
   fetchTickets(): void {
     const team = this.teamConfigService.selectedTeam();
     const epic = this.teamConfigService.selectedEpic();
@@ -121,7 +164,10 @@ export class BoardComponent {
     this.notionService.getTicketsForEpic(team, epic.id).subscribe({
       next: tickets => {
         this.tickets.set(tickets);
+        const deps = this.dependencyService.buildDependenciesFromTickets(tickets);
+        this.dependencies.set(deps);
         this.loading.set(false);
+        setTimeout(() => this.refreshTicketElementMap(), 100);
       },
       error: err => {
         console.error('Failed to fetch tickets:', err);
@@ -146,14 +192,13 @@ export class BoardComponent {
       t.notionId === event.ticket.notionId ? { ...t, status: newStatus } : t
     );
     this.tickets.set(updatedTickets);
+    setTimeout(() => this.refreshTicketElementMap(), 50);
 
-    // Update Notion
     this.notionService.updatePageProperty(event.ticket.notionId, {
       [team.propertiesName.status]: { status: { name: newStatus } },
     }).subscribe({
       error: err => {
         console.error('Failed to update ticket status:', err);
-        // Revert
         const revertedTickets = this.tickets().map(t =>
           t.notionId === event.ticket.notionId ? { ...t, status: previousStatus } : t
         );
@@ -163,10 +208,116 @@ export class BoardComponent {
   }
 
   onLinkStart(event: { ticketId: string; side: 'left' | 'right' }): void {
-    // Will be implemented in Phase 7
+    this.dependencyService.startLink(event.ticketId, event.side);
   }
 
   onLinkEnd(event: { ticketId: string }): void {
-    // Will be implemented in Phase 7
+    const source = this.dependencyService.linkSource();
+    if (!source || source.ticketId === event.ticketId) {
+      this.dependencyService.cancelLink();
+      return;
+    }
+
+    const team = this.teamConfigService.selectedTeam();
+    if (!team) return;
+
+    const fromTicket = this.tickets().find(t => t.notionId === source.ticketId);
+    if (!fromTicket) return;
+
+    // Optimistic update
+    this.dependencyService.addDependency(source.ticketId, event.ticketId);
+    this.dependencies.set(this.dependencyService.dependencies());
+
+    // Update ticket in local state
+    const updatedTickets = this.tickets().map(t =>
+      t.notionId === source.ticketId
+        ? { ...t, dependencyIds: [...t.dependencyIds, event.ticketId] }
+        : t
+    );
+    this.tickets.set(updatedTickets);
+
+    // Sync with Notion
+    this.notionService.addDependency(
+      source.ticketId,
+      fromTicket.dependencyIds,
+      event.ticketId,
+      team.propertiesName.bloque,
+    ).subscribe({
+      error: err => {
+        console.error('Failed to add dependency:', err);
+        this.dependencyService.removeDependency(source.ticketId, event.ticketId);
+        this.dependencies.set(this.dependencyService.dependencies());
+        // Revert ticket
+        const revertedTickets = this.tickets().map(t =>
+          t.notionId === source.ticketId
+            ? { ...t, dependencyIds: t.dependencyIds.filter(id => id !== event.ticketId) }
+            : t
+        );
+        this.tickets.set(revertedTickets);
+      },
+    });
+  }
+
+  onDeleteDependency(event: { fromTicketId: string; toTicketId: string }): void {
+    const team = this.teamConfigService.selectedTeam();
+    if (!team) return;
+
+    const fromTicket = this.tickets().find(t => t.notionId === event.fromTicketId);
+    if (!fromTicket) return;
+
+    // Optimistic update
+    this.dependencyService.removeDependency(event.fromTicketId, event.toTicketId);
+    this.dependencies.set(this.dependencyService.dependencies());
+
+    const updatedTickets = this.tickets().map(t =>
+      t.notionId === event.fromTicketId
+        ? { ...t, dependencyIds: t.dependencyIds.filter(id => id !== event.toTicketId) }
+        : t
+    );
+    this.tickets.set(updatedTickets);
+
+    this.notionService.removeDependency(
+      event.fromTicketId,
+      fromTicket.dependencyIds,
+      event.toTicketId,
+      team.propertiesName.bloque,
+    ).subscribe({
+      error: err => {
+        console.error('Failed to remove dependency:', err);
+        this.dependencyService.addDependency(event.fromTicketId, event.toTicketId);
+        this.dependencies.set(this.dependencyService.dependencies());
+        const revertedTickets = this.tickets().map(t =>
+          t.notionId === event.fromTicketId
+            ? { ...t, dependencyIds: [...t.dependencyIds, event.toTicketId] }
+            : t
+        );
+        this.tickets.set(revertedTickets);
+      },
+    });
+  }
+
+  onMouseMove(event: MouseEvent): void {
+    if (this.dependencyService.isLinkMode()) {
+      this.dependencyService.pendingMousePos.set({ x: event.clientX, y: event.clientY });
+    }
+  }
+
+  onBoardClick(event: MouseEvent): void {
+    if (this.dependencyService.isLinkMode()) {
+      this.dependencyService.cancelLink();
+    }
+  }
+
+  private refreshTicketElementMap(): void {
+    const container = this.boardContainerRef?.nativeElement;
+    if (!container) return;
+
+    const map = new Map<string, HTMLElement>();
+    const cards = container.querySelectorAll<HTMLElement>('[data-ticket-id]');
+    cards.forEach(card => {
+      const id = card.getAttribute('data-ticket-id');
+      if (id) map.set(id, card);
+    });
+    this.ticketElementsMap.set(map);
   }
 }

@@ -1,13 +1,17 @@
-import { Component, input, output, ChangeDetectionStrategy } from '@angular/core';
+import { Component, input, output, ChangeDetectionStrategy, HostBinding } from '@angular/core';
 import { Ticket } from '../../../core/models/ticket.model';
 
 @Component({
   selector: 'app-ticket-card',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    '[attr.data-ticket-id]': 'ticket().notionId',
+  },
   template: `
     <div
       class="group relative bg-white rounded-lg border border-gray-200 p-3 shadow-sm hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing"
+      (click)="onCardClick($event)"
     >
       <!-- Dependency dots (left) -->
       <div
@@ -68,6 +72,13 @@ export class TicketCardComponent {
 
   readonly linkStart = output<{ ticketId: string; side: 'left' | 'right' }>();
   readonly linkEnd = output<{ ticketId: string }>();
+
+  onCardClick(event: MouseEvent): void {
+    if (this.isLinkMode()) {
+      event.stopPropagation();
+      this.linkEnd.emit({ ticketId: this.ticket().notionId });
+    }
+  }
 
   onLinkStart(event: MouseEvent, side: 'left' | 'right'): void {
     event.stopPropagation();
