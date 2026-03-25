@@ -1,9 +1,15 @@
+export interface Assignee {
+  name: string;
+  avatarUrl: string | null;
+}
+
 export interface Ticket {
   id: string;
   notionId: string;
   title: string;
   status: string;
   assignee: string | null;
+  assignees: Assignee[];
   complexity: string | null;
   dependencyIds: string[];
   notionUrl: string;

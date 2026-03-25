@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable, expand, reduce, map, retry, timer, EMPTY } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { TeamConfig } from '../models/team-config.model';
-import { Ticket, Epic, NotionPage, NotionQueryResponse } from '../models/ticket.model';
+import { Ticket, Assignee, Epic, NotionPage, NotionQueryResponse } from '../models/ticket.model';
 
 @Injectable({ providedIn: 'root' })
 export class NotionService {
@@ -126,7 +126,8 @@ export class NotionService {
       title: this.extractTitle(props[pNames.title]),
       status: this.extractSelect(props[pNames.status]),
       assignee: this.extractPeople(props[pNames.assignedTo]),
-      complexity: this.extractSelect(props[pNames.complexity]),
+      assignees: this.extractAllPeople(props[pNames.assignedTo]),
+      complexity: this.extractText(props[pNames.complexity]) || this.extractSelect(props[pNames.complexity]) || null,
       dependencyIds: this.extractRelation(props[pNames.bloque]),
       notionUrl: page.url,
     };
@@ -180,6 +181,16 @@ export class NotionService {
       return prop.people[0].name || prop.people[0].person?.email || null;
     }
     return null;
+  }
+
+  private extractAllPeople(prop: any): Assignee[] {
+    if (!prop || prop.type !== 'people' || !prop.people) return [];
+    return prop.people
+      .filter((p: any) => p.name)
+      .map((p: any) => ({
+        name: p.name,
+        avatarUrl: p.avatar_url || null,
+      }));
   }
 
   private extractRelation(prop: any): string[] {
