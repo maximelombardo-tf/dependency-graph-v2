@@ -19,6 +19,7 @@ import { DependencyService } from '../../core/services/dependency.service';
 import { Ticket } from '../../core/models/ticket.model';
 import { Dependency } from '../../core/models/dependency.model';
 import { COLUMN_DEFINITIONS, ColumnKey } from '../../core/models/team-config.model';
+import { ToastService } from '../../shared/components/toast.service';
 
 interface ColumnData {
   key: ColumnKey;
@@ -38,6 +39,15 @@ interface ColumnData {
           @if (authService.userName()) {
             <span class="text-sm text-gray-600">{{ authService.userName() }}</span>
           }
+          <button
+            class="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+            (click)="fetchTickets()"
+            title="Rafraîchir (R)"
+          >
+            <svg class="w-4 h-4" [class.animate-spin]="loading()" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
           <button
             class="text-sm text-gray-500 hover:text-gray-700 underline"
             (click)="authService.logout()"
@@ -105,6 +115,7 @@ export class BoardComponent implements AfterViewInit {
   readonly teamConfigService = inject(TeamConfigService);
   readonly dependencyService = inject(DependencyService);
   private readonly notionService = inject(NotionService);
+  private readonly toastService = inject(ToastService);
 
   @ViewChild('boardContainer') boardContainerRef!: ElementRef<HTMLElement>;
   boardContainerEl: HTMLElement | null = null;
@@ -153,6 +164,13 @@ export class BoardComponent implements AfterViewInit {
     this.dependencyService.cancelLink();
   }
 
+  @HostListener('document:keydown.r', ['$event'])
+  onRefreshKey(event: Event): void {
+    const target = event.target as HTMLElement;
+    if (target.tagName === 'INPUT' || target.tagName === 'SELECT') return;
+    this.fetchTickets();
+  }
+
   fetchTickets(): void {
     const team = this.teamConfigService.selectedTeam();
     const epic = this.teamConfigService.selectedEpic();
@@ -199,6 +217,7 @@ export class BoardComponent implements AfterViewInit {
     }).subscribe({
       error: err => {
         console.error('Failed to update ticket status:', err);
+        this.toastService.error('Erreur lors du déplacement du ticket. Changement annulé.');
         const revertedTickets = this.tickets().map(t =>
           t.notionId === event.ticket.notionId ? { ...t, status: previousStatus } : t
         );
@@ -245,6 +264,7 @@ export class BoardComponent implements AfterViewInit {
     ).subscribe({
       error: err => {
         console.error('Failed to add dependency:', err);
+        this.toastService.error('Erreur lors de la création de la dépendance.');
         this.dependencyService.removeDependency(source.ticketId, event.ticketId);
         this.dependencies.set(this.dependencyService.dependencies());
         // Revert ticket
@@ -284,6 +304,7 @@ export class BoardComponent implements AfterViewInit {
     ).subscribe({
       error: err => {
         console.error('Failed to remove dependency:', err);
+        this.toastService.error('Erreur lors de la suppression de la dépendance.');
         this.dependencyService.addDependency(event.fromTicketId, event.toTicketId);
         this.dependencies.set(this.dependencyService.dependencies());
         const revertedTickets = this.tickets().map(t =>
