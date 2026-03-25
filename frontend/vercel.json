@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "buildCommand": "npx ng build --configuration production",
+  "outputDirectory": "dist/frontend/browser",
+  "framework": null,
+  "rewrites": [
+    {
+      "source": "/api/notion/:path*",
+      "destination": "/api/notion"
+    },
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
+  ]
+}
