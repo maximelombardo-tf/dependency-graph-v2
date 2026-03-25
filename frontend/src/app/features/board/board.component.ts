@@ -111,7 +111,7 @@ interface ColumnData {
         }
       } @else {
         <div class="flex-1 flex items-center justify-center">
-          <p class="text-gray-400">Sélectionnez une équipe et une epic pour commencer</p>
+          <p class="text-gray-400">Sélectionnez une équipe et une EPIC pour commencer</p>
         </div>
       }
     </div>
