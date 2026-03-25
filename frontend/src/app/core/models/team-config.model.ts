@@ -1,4 +1,5 @@
 export interface StatusMapping {
+  backlogToPrepare: string[];
   toChallenge: string[];
   toStrat: string[];
   toDev: string[];
@@ -21,11 +22,20 @@ export interface PropertiesName {
   assignedTo: string;
 }
 
+export interface EpicFilterCondition {
+  property: string;
+  type: 'status' | 'select' | 'multi_select';
+  value: string;
+}
+
+export type EpicFilter = EpicFilterCondition[];
+
 export interface TeamConfig {
   name: string;
   epicDatabaseId: string;
   usDatabaseId: string;
   propertiesName: PropertiesName;
+  epicFilter?: EpicFilter;
 }
 
 export type ColumnKey = keyof StatusMapping;
@@ -36,6 +46,7 @@ export interface ColumnDefinition {
 }
 
 export const COLUMN_DEFINITIONS: ColumnDefinition[] = [
+  { key: 'backlogToPrepare', displayName: 'Backlog à préparer' },
   { key: 'toChallenge', displayName: 'A challenger' },
   { key: 'toStrat', displayName: 'A strater' },
   { key: 'toDev', displayName: 'Prêt pour le dev' },

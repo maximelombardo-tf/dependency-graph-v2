@@ -213,7 +213,7 @@ export class BoardComponent implements AfterViewInit {
     setTimeout(() => this.refreshTicketElementMap(), 50);
 
     this.notionService.updatePageProperty(event.ticket.notionId, {
-      [team.propertiesName.status]: { status: { name: newStatus } },
+      [team.propertiesName.status]: { select: { name: newStatus } },
     }).subscribe({
       error: err => {
         console.error('Failed to update ticket status:', err);

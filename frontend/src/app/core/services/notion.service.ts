@@ -45,8 +45,37 @@ export class NotionService {
   }
 
   getEpicsForTeam(teamConfig: TeamConfig): Observable<Epic[]> {
-    return this.queryDatabase(teamConfig.epicDatabaseId).pipe(
-      map(pages => pages.map(page => this.mapToEpic(page, teamConfig))),
+    const filter = teamConfig.epicFilter?.length
+      ? {
+          and: teamConfig.epicFilter.map(condition => ({
+            property: condition.property,
+            [condition.type]: {
+              [condition.type === 'multi_select' ? 'contains' : 'equals']: condition.value,
+            },
+          })),
+        }
+      : undefined;
+
+    return this.querySinglePage(teamConfig.epicDatabaseId, filter).pipe(
+      map(pages =>
+        pages.map(page => this.mapToEpic(page, teamConfig))
+          .sort((a, b) => a.title.localeCompare(b.title))
+      ),
+    );
+  }
+
+  /** Fetch only the first page (100 results max) - no pagination. */
+  private querySinglePage(databaseId: string, filter?: object, sorts?: object[]): Observable<NotionPage[]> {
+    const body: Record<string, any> = { page_size: 100 };
+    if (filter) body['filter'] = filter;
+    if (sorts) body['sorts'] = sorts;
+
+    return this.http.post<NotionQueryResponse>(
+      `${this.baseUrl}/databases/${databaseId}/query`,
+      body,
+    ).pipe(
+      map(response => response.results),
+      this.retryOnRateLimit(),
     );
   }
 

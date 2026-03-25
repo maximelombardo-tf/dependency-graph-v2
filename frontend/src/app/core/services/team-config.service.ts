@@ -5,8 +5,8 @@ import { Epic } from '../models/ticket.model';
 const TEAMS: TeamConfig[] = [
   {
     name: 'Flash',
-    epicDatabaseId: 'FLASH_EPIC_DB_ID',
-    usDatabaseId: 'FLASH_US_DB_ID',
+    epicDatabaseId: 'f81ab481-d098-4b16-bad2-9e8a554b5941',
+    usDatabaseId: '513b199d-91b3-450b-89ea-f18d768c3786',
     propertiesName: {
       id: 'ID',
       title: 'Name',
@@ -14,6 +14,7 @@ const TEAMS: TeamConfig[] = [
       complexity: 'Size',
       bloque: 'Bloque',
       statuses: {
+        backlogToPrepare: ['02 - Backlog à préparer'],
         toChallenge: ['1 🛹 Backlog'],
         toStrat: ['2 🛴 Strat tech'],
         toDev: ['21 - Backlog ready'],
@@ -27,6 +28,10 @@ const TEAMS: TeamConfig[] = [
       epicName: 'Name',
       assignedTo: 'Assign',
     },
+    epicFilter: [
+      { property: 'Status', type: 'select', value: 'Delivery Team' },
+      { property: 'Équipe', type: 'multi_select', value: 'Plateformes Flash' },
+    ],
   },
 ];
 
