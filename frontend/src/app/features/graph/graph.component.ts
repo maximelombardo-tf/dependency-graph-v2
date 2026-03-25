@@ -32,21 +32,19 @@ interface GraphEdge {
   to: string;
 }
 
-const STATUS_COLORS: Record<string, { bg: string; border: string; text: string }> = {};
-
-function getStatusColor(status: string, columnKey: ColumnKey | null): { bg: string; border: string; text: string } {
-  const colorMap: Record<ColumnKey, { bg: string; border: string; text: string }> = {
-    backlogToPrepare: { bg: 'bg-gray-50',    border: 'border-gray-300',  text: 'text-gray-600' },
-    toChallenge:      { bg: 'bg-amber-50',   border: 'border-amber-300', text: 'text-amber-700' },
-    toStrat:          { bg: 'bg-purple-50',  border: 'border-purple-300', text: 'text-purple-700' },
-    toDev:            { bg: 'bg-green-50',   border: 'border-green-300', text: 'text-green-700' },
-    sprintBacklog:    { bg: 'bg-slate-50',   border: 'border-slate-300', text: 'text-slate-700' },
-    isInProgress:     { bg: 'bg-blue-50',    border: 'border-blue-400',  text: 'text-blue-700' },
-    toValidate:       { bg: 'bg-indigo-50',  border: 'border-indigo-300', text: 'text-indigo-700' },
-    blocked:          { bg: 'bg-red-50',     border: 'border-red-400',   text: 'text-red-700' },
-    done:             { bg: 'bg-emerald-50', border: 'border-emerald-300', text: 'text-emerald-700' },
+function getStatusColor(columnKey: ColumnKey | null): { bg: string; border: string } {
+  const colorMap: Record<ColumnKey, { bg: string; border: string }> = {
+    backlogToPrepare: { bg: 'bg-gray-50',    border: 'border-gray-300' },
+    toChallenge:      { bg: 'bg-amber-50',   border: 'border-amber-300' },
+    toStrat:          { bg: 'bg-purple-50',  border: 'border-purple-300' },
+    toDev:            { bg: 'bg-green-50',   border: 'border-green-300' },
+    sprintBacklog:    { bg: 'bg-slate-50',   border: 'border-slate-300' },
+    isInProgress:     { bg: 'bg-blue-50',    border: 'border-blue-400' },
+    toValidate:       { bg: 'bg-indigo-50',  border: 'border-indigo-300' },
+    blocked:          { bg: 'bg-red-50',     border: 'border-red-400' },
+    done:             { bg: 'bg-emerald-50', border: 'border-emerald-300' },
   };
-  return columnKey ? colorMap[columnKey] : { bg: 'bg-gray-50', border: 'border-gray-300', text: 'text-gray-600' };
+  return columnKey ? colorMap[columnKey] : { bg: 'bg-gray-50', border: 'border-gray-300' };
 }
 
 const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
@@ -81,7 +79,7 @@ const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
             @if (linkSource()) {
               Cliquez sur un ticket cible (ESC pour annuler)
             } @else {
-              Points: lier / Clic droit flèche: supprimer
+              Points: lier / Clic: changer statut / Clic droit flèche: supprimer
             }
           </span>
           <button
@@ -140,12 +138,7 @@ const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
                 [style.transform]="'translate(' + panX() + 'px, ' + panY() + 'px) scale(' + zoom() + ')'"
               >
                 <!-- SVG edges -->
-                <svg
-                  class="absolute top-0 left-0 pointer-events-none"
-                  [attr.width]="svgSize()"
-                  [attr.height]="svgSize()"
-                  style="overflow: visible"
-                >
+                <svg class="absolute top-0 left-0 pointer-events-none" [attr.width]="svgSize()" [attr.height]="svgSize()" style="overflow: visible">
                   <defs>
                     <marker id="graph-arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
                       <polygon points="0 0, 10 3.5, 0 7" fill="#9CA3AF" />
@@ -197,27 +190,16 @@ const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
                     ></div>
 
                     <div
-                      class="w-60 rounded-lg border-2 p-3 shadow-md hover:shadow-lg transition-all"
+                      class="w-60 rounded-lg border-2 p-3 shadow-md hover:shadow-lg transition-all cursor-pointer"
                       [class]="getNodeColorClasses(node)"
                       [class.ring-2]="node.dragging"
                       [class.ring-blue-200]="node.dragging"
-                      [class.cursor-grab]="!linkSource()"
-                      [class.cursor-pointer]="!!linkSource()"
                       (click)="onNodeClick($event, node)"
                     >
-                      <!-- Title -->
-                      <a
-                        [href]="node.ticket.notionUrl"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="text-sm font-medium text-gray-900 hover:text-blue-600 line-clamp-2 block"
-                        (mousedown)="$event.stopPropagation()"
-                        (click)="$event.stopPropagation()"
-                      >
+                      <span class="text-sm font-medium text-gray-900 line-clamp-2 block">
                         {{ node.ticket.title }}
-                      </a>
+                      </span>
 
-                      <!-- ID + Size -->
                       <div class="mt-1.5 flex items-center gap-2">
                         <span class="text-xs text-gray-400">{{ node.ticket.id }}</span>
                         @if (node.ticket.complexity) {
@@ -225,23 +207,13 @@ const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
                         }
                       </div>
 
-                      <!-- Assignees -->
                       @if (node.ticket.assignees.length > 0) {
                         <div class="mt-2 flex items-center gap-1">
                           @for (person of node.ticket.assignees; track person.name) {
                             @if (person.avatarUrl) {
-                              <img
-                                [src]="person.avatarUrl"
-                                [alt]="person.name"
-                                [title]="person.name"
-                                class="w-6 h-6 rounded-full border border-white shadow-sm object-cover"
-                                referrerpolicy="no-referrer"
-                              />
+                              <img [src]="person.avatarUrl" [alt]="person.name" [title]="person.name" class="w-6 h-6 rounded-full border border-white shadow-sm object-cover" referrerpolicy="no-referrer" />
                             } @else {
-                              <div
-                                class="w-6 h-6 rounded-full bg-gray-300 flex items-center justify-center text-xs font-medium text-gray-600 border border-white shadow-sm"
-                                [title]="person.name"
-                              >
+                              <div class="w-6 h-6 rounded-full bg-gray-300 flex items-center justify-center text-xs font-medium text-gray-600 border border-white shadow-sm" [title]="person.name">
                                 {{ person.name.charAt(0) }}
                               </div>
                             }
@@ -254,16 +226,34 @@ const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
                 }
               </div>
 
-              <!-- Context menu -->
+              <!-- Context menu: edge deletion -->
               @if (contextMenu()) {
-                <div
-                  class="fixed z-50 bg-white rounded-lg shadow-lg border border-gray-200 py-1"
-                  [style.left.px]="contextMenu()!.x"
-                  [style.top.px]="contextMenu()!.y"
-                >
+                <div class="fixed z-50 bg-white rounded-lg shadow-lg border border-gray-200 py-1" [style.left.px]="contextMenu()!.x" [style.top.px]="contextMenu()!.y">
                   <button class="w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 text-left" (click)="deleteEdge()">
                     Supprimer la dépendance
                   </button>
+                </div>
+              }
+
+              <!-- Status picker popover -->
+              @if (statusPicker()) {
+                <div
+                  class="fixed z-50 bg-white rounded-lg shadow-xl border border-gray-200 py-1 w-56 max-h-72 overflow-y-auto"
+                  [style.left.px]="statusPicker()!.x"
+                  [style.top.px]="statusPicker()!.y"
+                >
+                  <div class="px-3 py-2 text-xs font-semibold text-gray-400 border-b border-gray-100">Changer le statut</div>
+                  @for (col of columnDefinitions; track col.key) {
+                    <button
+                      class="w-full px-3 py-1.5 text-sm text-left hover:bg-gray-50 flex items-center gap-2"
+                      [class.font-semibold]="isCurrentStatus(col.key)"
+                      [class.bg-blue-50]="isCurrentStatus(col.key)"
+                      (click)="changeStatus(col.key)"
+                    >
+                      <div class="w-2.5 h-2.5 rounded-full shrink-0" [class]="getLegendDot(col.key)"></div>
+                      {{ col.displayName }}
+                    </button>
+                  }
                 </div>
               }
             </div>
@@ -298,8 +288,10 @@ export class GraphComponent implements AfterViewInit {
   readonly linkSource = signal<{ ticketId: string; side: string } | null>(null);
   readonly mousePos = signal<{ x: number; y: number } | null>(null);
   readonly contextMenu = signal<{ x: number; y: number; edge: GraphEdge } | null>(null);
+  readonly statusPicker = signal<{ x: number; y: number; node: GraphNode } | null>(null);
 
   readonly legendItems = LEGEND_ITEMS;
+  readonly columnDefinitions = COLUMN_DEFINITIONS;
 
   private isPanning = false;
   private panStartX = 0;
@@ -307,6 +299,7 @@ export class GraphComponent implements AfterViewInit {
   draggingNode: GraphNode | null = null;
   private dragOffsetX = 0;
   private dragOffsetY = 0;
+  private dragMoved = false;
 
   static readonly NODE_WIDTH = 240;
   static readonly NODE_HEIGHT = 100;
@@ -335,14 +328,10 @@ export class GraphComponent implements AfterViewInit {
     if (!sourceNode) return null;
 
     const fromX = sourceNode.x + GraphComponent.NODE_WIDTH / 2;
-    const fromY = source.side === 'bottom'
-      ? sourceNode.y + GraphComponent.NODE_HEIGHT
-      : sourceNode.y;
-
+    const fromY = source.side === 'bottom' ? sourceNode.y + GraphComponent.NODE_HEIGHT : sourceNode.y;
     const z = this.zoom();
     const toX = (mouse.x - this.panX()) / z;
     const toY = (mouse.y - this.panY()) / z;
-
     const dy = Math.abs(toY - fromY);
     const offset = Math.max(60, dy * 0.4);
 
@@ -353,9 +342,7 @@ export class GraphComponent implements AfterViewInit {
     effect(() => {
       const team = this.teamConfigService.selectedTeam();
       const epic = this.teamConfigService.selectedEpic();
-      if (team && epic) {
-        this.fetchTickets();
-      }
+      if (team && epic) this.fetchTickets();
     });
   }
 
@@ -365,21 +352,73 @@ export class GraphComponent implements AfterViewInit {
   onEscape(): void {
     this.cancelLink();
     this.contextMenu.set(null);
+    this.statusPicker.set(null);
   }
 
   @HostListener('document:click')
   onDocumentClick(): void {
     this.contextMenu.set(null);
+    // statusPicker closed by onCanvasMouseDown
   }
 
   getNodeColorClasses(node: GraphNode): string {
     const columnKey = this.teamConfigService.getColumnKeyForStatus(node.ticket.status);
-    const colors = getStatusColor(node.ticket.status, columnKey);
-    const base = `${colors.bg} ${colors.border}`;
+    const colors = getStatusColor(columnKey);
     if (this.linkSource() && this.linkSource()!.ticketId !== node.ticket.notionId) {
       return `${colors.bg} border-green-400`;
     }
-    return base;
+    return `${colors.bg} ${colors.border}`;
+  }
+
+  getLegendDot(key: ColumnKey): string {
+    return LEGEND_ITEMS.find(l => l.key === key)?.dotClass || 'bg-gray-400';
+  }
+
+  isCurrentStatus(columnKey: ColumnKey): boolean {
+    const picker = this.statusPicker();
+    if (!picker) return false;
+    const currentKey = this.teamConfigService.getColumnKeyForStatus(picker.node.ticket.status);
+    return currentKey === columnKey;
+  }
+
+  // --- Status change ---
+
+  changeStatus(columnKey: ColumnKey): void {
+    const picker = this.statusPicker();
+    if (!picker) return;
+
+    const team = this.teamConfigService.selectedTeam();
+    if (!team) return;
+
+    const newStatus = this.teamConfigService.getFirstStatusForColumn(columnKey);
+    if (!newStatus) return;
+
+    const ticketId = picker.node.ticket.notionId;
+    const previousStatus = picker.node.ticket.status;
+
+    if (newStatus === previousStatus) {
+      this.statusPicker.set(null);
+      return;
+    }
+
+    // Optimistic update
+    this.updateTicketStatus(ticketId, newStatus);
+    this.statusPicker.set(null);
+
+    this.notionService.updatePageProperty(ticketId, {
+      [team.propertiesName.status]: { select: { name: newStatus } },
+    }).subscribe({
+      error: err => {
+        console.error('Failed to update status:', err);
+        this.toastService.error('Erreur lors du changement de statut.');
+        this.updateTicketStatus(ticketId, previousStatus);
+      },
+    });
+  }
+
+  private updateTicketStatus(ticketId: string, status: string): void {
+    this.tickets.update(ts => ts.map(t => t.notionId === ticketId ? { ...t, status } : t));
+    this.nodes.update(ns => ns.map(n => n.ticket.notionId === ticketId ? { ...n, ticket: { ...n.ticket, status } } : n));
   }
 
   // --- Link mode ---
@@ -396,21 +435,25 @@ export class GraphComponent implements AfterViewInit {
   }
 
   onNodeClick(event: MouseEvent, node: GraphNode): void {
+    event.stopPropagation();
+
     if (this.linkSource()) {
-      event.stopPropagation();
       this.completeLink(node.ticket.notionId);
+      return;
     }
+
+    // If we were dragging, don't open status picker
+    if (this.dragMoved) return;
+
+    // Open status picker
+    this.statusPicker.set({ x: event.clientX, y: event.clientY, node });
   }
 
   private completeLink(targetId: string): void {
     const source = this.linkSource();
-    if (!source || source.ticketId === targetId) {
-      this.cancelLink();
-      return;
-    }
+    if (!source || source.ticketId === targetId) { this.cancelLink(); return; }
 
-    const exists = this.edges().some(e => e.from === source.ticketId && e.to === targetId);
-    if (exists) {
+    if (this.edges().some(e => e.from === source.ticketId && e.to === targetId)) {
       this.toastService.error('Cette dépendance existe déjà.');
       this.cancelLink();
       return;
@@ -421,7 +464,6 @@ export class GraphComponent implements AfterViewInit {
     const fromTicket = this.tickets().find(t => t.notionId === source.ticketId);
     if (!fromTicket) return;
 
-    // Optimistic update
     this.edges.update(edges => [...edges, { from: source.ticketId, to: targetId }]);
     this.updateTicketDeps(source.ticketId, deps => [...deps, targetId]);
     this.cancelLink();
@@ -459,7 +501,6 @@ export class GraphComponent implements AfterViewInit {
     if (!fromTicket) return;
 
     const { from, to } = menu.edge;
-
     this.edges.update(edges => edges.filter(e => !(e.from === from && e.to === to)));
     this.updateTicketDeps(from, deps => deps.filter(id => id !== to));
     this.contextMenu.set(null);
@@ -476,15 +517,8 @@ export class GraphComponent implements AfterViewInit {
   }
 
   private updateTicketDeps(ticketId: string, updater: (deps: string[]) => string[]): void {
-    this.tickets.update(tickets =>
-      tickets.map(t => t.notionId === ticketId ? { ...t, dependencyIds: updater(t.dependencyIds) } : t)
-    );
-    this.nodes.update(nodes =>
-      nodes.map(n => n.ticket.notionId === ticketId
-        ? { ...n, ticket: { ...n.ticket, dependencyIds: updater(n.ticket.dependencyIds) } }
-        : n
-      )
-    );
+    this.tickets.update(ts => ts.map(t => t.notionId === ticketId ? { ...t, dependencyIds: updater(t.dependencyIds) } : t));
+    this.nodes.update(ns => ns.map(n => n.ticket.notionId === ticketId ? { ...n, ticket: { ...n.ticket, dependencyIds: updater(n.ticket.dependencyIds) } } : n));
   }
 
   // --- Data loading ---
@@ -523,51 +557,116 @@ export class GraphComponent implements AfterViewInit {
     this.centerView(nodes);
   }
 
+  /**
+   * Layout: parents centered above their children.
+   * 1. Assign layers via BFS (roots = layer 0)
+   * 2. Position bottom-up: leaf layer first, evenly spaced
+   * 3. Each parent is centered at the average x of its children
+   */
   private computeLayout(tickets: Ticket[], edges: GraphEdge[]): GraphNode[] {
-    const incomingCount = new Map<string, number>();
-    const outgoing = new Map<string, string[]>();
-    tickets.forEach(t => { incomingCount.set(t.notionId, 0); outgoing.set(t.notionId, []); });
+    if (tickets.length === 0) return [];
+
+    const children = new Map<string, string[]>();
+    const parents = new Map<string, string[]>();
+    const inDegree = new Map<string, number>();
+
+    tickets.forEach(t => {
+      children.set(t.notionId, []);
+      parents.set(t.notionId, []);
+      inDegree.set(t.notionId, 0);
+    });
+    const ticketIds = new Set(tickets.map(t => t.notionId));
     edges.forEach(e => {
-      incomingCount.set(e.to, (incomingCount.get(e.to) || 0) + 1);
-      outgoing.get(e.from)?.push(e.to);
+      if (ticketIds.has(e.from) && ticketIds.has(e.to)) {
+        children.get(e.from)!.push(e.to);
+        parents.get(e.to)!.push(e.from);
+        inDegree.set(e.to, (inDegree.get(e.to) || 0) + 1);
+      }
     });
 
-    // Vertical layout: layers go top to bottom
+    // BFS to assign layers
     const layers = new Map<string, number>();
     const queue: string[] = [];
     tickets.forEach(t => {
-      if ((incomingCount.get(t.notionId) || 0) === 0) { layers.set(t.notionId, 0); queue.push(t.notionId); }
+      if ((inDegree.get(t.notionId) || 0) === 0) {
+        layers.set(t.notionId, 0);
+        queue.push(t.notionId);
+      }
     });
     while (queue.length > 0) {
       const id = queue.shift()!;
-      const layer = layers.get(id) || 0;
-      for (const depId of outgoing.get(id) || []) {
-        const current = layers.get(depId);
-        if (current === undefined || current < layer + 1) { layers.set(depId, layer + 1); queue.push(depId); }
+      const layer = layers.get(id)!;
+      for (const childId of children.get(id) || []) {
+        const current = layers.get(childId);
+        if (current === undefined || current < layer + 1) {
+          layers.set(childId, layer + 1);
+          queue.push(childId);
+        }
       }
     }
+    // Unvisited nodes (cycles or isolated)
     tickets.forEach(t => { if (!layers.has(t.notionId)) layers.set(t.notionId, 0); });
 
-    const layerGroups = new Map<number, Ticket[]>();
-    tickets.forEach(t => {
-      const layer = layers.get(t.notionId) || 0;
-      if (!layerGroups.has(layer)) layerGroups.set(layer, []);
-      layerGroups.get(layer)!.push(t);
-    });
+    // Group by layer
+    const maxLayer = Math.max(...Array.from(layers.values()), 0);
+    const layerGroups: string[][] = [];
+    for (let i = 0; i <= maxLayer; i++) layerGroups.push([]);
+    tickets.forEach(t => layerGroups[layers.get(t.notionId)!].push(t.notionId));
 
-    const colGap = 290;
-    const rowGap = 180;
+    // Position bottom-up
+    const xPos = new Map<string, number>();
+    const nodeW = GraphComponent.NODE_WIDTH;
+    const colGap = 50;
+
+    // Start from deepest layer
+    for (let layer = maxLayer; layer >= 0; layer--) {
+      const group = layerGroups[layer];
+
+      group.forEach(id => {
+        const childIds = (children.get(id) || []).filter(c => ticketIds.has(c));
+        if (childIds.length > 0 && childIds.every(c => xPos.has(c))) {
+          // Center above children
+          const childXs = childIds.map(c => xPos.get(c)!);
+          xPos.set(id, (Math.min(...childXs) + Math.max(...childXs)) / 2);
+        }
+      });
+
+      // Position nodes that don't have positioned children yet (or have none)
+      const unpositioned = group.filter(id => !xPos.has(id));
+      const positioned = group.filter(id => xPos.has(id));
+
+      if (unpositioned.length > 0) {
+        // Find a starting x that doesn't overlap with positioned nodes
+        const takenXs = positioned.map(id => xPos.get(id)!).sort((a, b) => a - b);
+        let startX = 0;
+        if (takenXs.length > 0) {
+          // Place unpositioned nodes after positioned ones
+          startX = Math.max(...takenXs) + nodeW + colGap;
+        }
+        unpositioned.forEach((id, i) => {
+          xPos.set(id, startX + i * (nodeW + colGap));
+        });
+      }
+
+      // Resolve overlaps within the layer
+      const sorted = [...group].sort((a, b) => xPos.get(a)! - xPos.get(b)!);
+      for (let i = 1; i < sorted.length; i++) {
+        const prev = xPos.get(sorted[i - 1])!;
+        const curr = xPos.get(sorted[i])!;
+        if (curr < prev + nodeW + colGap) {
+          xPos.set(sorted[i], prev + nodeW + colGap);
+        }
+      }
+    }
+
+    const rowGap = 160;
+    const ticketMap = new Map(tickets.map(t => [t.notionId, t]));
     const nodes: GraphNode[] = [];
 
-    for (const [layer, group] of layerGroups) {
-      group.forEach((ticket, index) => {
-        nodes.push({
-          ticket,
-          x: index * colGap + 100,
-          y: layer * rowGap + 100,
-          dragging: false,
-        });
-      });
+    for (const [id, x] of xPos) {
+      const ticket = ticketMap.get(id)!;
+      const layer = layers.get(id)!;
+      nodes.push({ ticket, x, y: layer * rowGap + 100, dragging: false });
     }
 
     return nodes;
@@ -596,9 +695,8 @@ export class GraphComponent implements AfterViewInit {
   autoLayout(): void {
     const tickets = this.tickets();
     if (tickets.length === 0) return;
-    const nodes = this.computeLayout(tickets, this.edges());
-    this.nodes.set(nodes);
-    this.centerView(nodes);
+    this.nodes.set(this.computeLayout(tickets, this.edges()));
+    this.centerView(this.nodes());
   }
 
   private computeEdgePath(from: GraphNode, to: GraphNode): string {
@@ -606,10 +704,8 @@ export class GraphComponent implements AfterViewInit {
     const fromY = from.y + GraphComponent.NODE_HEIGHT;
     const toX = to.x + GraphComponent.NODE_WIDTH / 2;
     const toY = to.y;
-
     const dy = Math.abs(toY - fromY);
     const offset = Math.max(60, dy * 0.4);
-
     return `M ${fromX} ${fromY} C ${fromX} ${fromY + offset}, ${toX} ${toY - offset}, ${toX} ${toY}`;
   }
 
@@ -629,6 +725,7 @@ export class GraphComponent implements AfterViewInit {
   }
 
   onCanvasMouseDown(event: MouseEvent): void {
+    this.statusPicker.set(null);
     if (this.linkSource()) { this.cancelLink(); return; }
     if (this.draggingNode) return;
     this.isPanning = true;
@@ -642,6 +739,7 @@ export class GraphComponent implements AfterViewInit {
       this.mousePos.set({ x: event.clientX - rect.left, y: event.clientY - rect.top });
     }
     if (this.draggingNode) {
+      this.dragMoved = true;
       const z = this.zoom();
       this.nodes.update(nodes =>
         nodes.map(n => n.ticket.notionId === this.draggingNode!.ticket.notionId
@@ -666,6 +764,8 @@ export class GraphComponent implements AfterViewInit {
   onNodeMouseDown(event: MouseEvent, node: GraphNode): void {
     if (this.linkSource()) return;
     event.stopPropagation();
+    this.statusPicker.set(null);
+    this.dragMoved = false;
     const z = this.zoom();
     this.dragOffsetX = (event.clientX - this.panX()) / z - node.x;
     this.dragOffsetY = (event.clientY - this.panY()) / z - node.y;
