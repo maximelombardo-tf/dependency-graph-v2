@@ -28,29 +28,56 @@ export class AuthService {
   readonly userPicture = signal<string | null>(null);
   readonly authError = signal<string | null>(null);
 
+  readonly isBypassed = environment.bypassAuth;
+
   constructor() {
-    this.restoreSession();
+    if (this.isBypassed) {
+      this.isAuthenticated.set(true);
+      this.userEmail.set('dev@theodo.com');
+      this.userName.set('Dev Local');
+    } else {
+      this.restoreSession();
+    }
   }
 
   initGoogleAuth(buttonElement: HTMLElement): void {
-    if (typeof google === 'undefined') {
-      console.error('Google Identity Services not loaded');
-      return;
-    }
+    this.waitForGoogleScript().then(() => {
+      google.accounts.id.initialize({
+        client_id: environment.googleClientId,
+        callback: (response: GoogleCredentialResponse) => {
+          this.ngZone.run(() => this.handleCredentialResponse(response));
+        },
+      });
 
-    google.accounts.id.initialize({
-      client_id: environment.googleClientId,
-      callback: (response: GoogleCredentialResponse) => {
-        this.ngZone.run(() => this.handleCredentialResponse(response));
-      },
+      google.accounts.id.renderButton(buttonElement, {
+        theme: 'outline',
+        size: 'large',
+        text: 'signin_with',
+        shape: 'rectangular',
+        width: 300,
+      });
+    }).catch(() => {
+      this.authError.set('Impossible de charger Google Sign-In. Rechargez la page.');
     });
+  }
 
-    google.accounts.id.renderButton(buttonElement, {
-      theme: 'outline',
-      size: 'large',
-      text: 'signin_with',
-      shape: 'rectangular',
-      width: 300,
+  private waitForGoogleScript(timeoutMs = 10000): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (typeof google !== 'undefined' && google.accounts) {
+        resolve();
+        return;
+      }
+      const interval = 100;
+      let elapsed = 0;
+      const check = setInterval(() => {
+        if (typeof google !== 'undefined' && google.accounts) {
+          clearInterval(check);
+          resolve();
+        } else if ((elapsed += interval) >= timeoutMs) {
+          clearInterval(check);
+          reject(new Error('Google Identity Services script failed to load'));
+        }
+      }, interval);
     });
   }
 
