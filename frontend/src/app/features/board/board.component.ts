@@ -20,6 +20,7 @@ import { Ticket } from '../../core/models/ticket.model';
 import { Dependency } from '../../core/models/dependency.model';
 import { COLUMN_DEFINITIONS, ColumnKey } from '../../core/models/team-config.model';
 import { ToastService } from '../../shared/components/toast.service';
+import { RouterLink } from '@angular/router';
 
 interface ColumnData {
   key: ColumnKey;
@@ -30,11 +31,17 @@ interface ColumnData {
 @Component({
   selector: 'app-board',
   standalone: true,
-  imports: [SelectorComponent, KanbanColumnComponent, DependencyOverlayComponent],
+  imports: [SelectorComponent, KanbanColumnComponent, DependencyOverlayComponent, RouterLink],
   template: `
     <div class="min-h-screen flex flex-col">
       <header class="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-200 shrink-0">
-        <h1 class="text-lg font-semibold text-gray-800">Dependency Graph</h1>
+        <div class="flex items-center gap-4">
+          <h1 class="text-lg font-semibold text-gray-800">Dependency Graph</h1>
+          <nav class="flex gap-1 bg-gray-100 rounded-lg p-0.5">
+            <span class="px-3 py-1 text-sm rounded-md bg-white shadow-sm font-medium text-gray-900">Kanban</span>
+            <a routerLink="/graph" class="px-3 py-1 text-sm rounded-md text-gray-600 hover:bg-white transition-colors">Graph</a>
+          </nav>
+        </div>
         <div class="flex items-center gap-3">
           @if (authService.userName()) {
             <span class="text-sm text-gray-600">{{ authService.userName() }}</span>
