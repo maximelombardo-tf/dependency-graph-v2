@@ -15,7 +15,7 @@ interface JwtPayload {
   sub: string;
 }
 
-const ALLOWED_DOMAINS = ['theodo.com', 'theodofintech.com'];
+const ALLOWED_DOMAINS = ['theodo.com'];
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
