@@ -226,37 +226,46 @@ const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
                 }
               </div>
 
-              <!-- Context menu: edge deletion -->
-              @if (contextMenu()) {
-                <div class="fixed z-50 bg-white rounded-lg shadow-lg border border-gray-200 py-1" [style.left.px]="contextMenu()!.x" [style.top.px]="contextMenu()!.y">
-                  <button class="w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 text-left" (click)="deleteEdge()">
-                    Supprimer la dépendance
-                  </button>
-                </div>
-              }
+</div>
 
-              <!-- Status picker popover -->
-              @if (statusPicker()) {
-                <div
-                  class="fixed z-50 bg-white rounded-lg shadow-xl border border-gray-200 py-1 w-56 max-h-72 overflow-y-auto"
-                  [style.left.px]="statusPicker()!.x"
-                  [style.top.px]="statusPicker()!.y"
-                >
-                  <div class="px-3 py-2 text-xs font-semibold text-gray-400 border-b border-gray-100">Changer le statut</div>
-                  @for (col of columnDefinitions; track col.key) {
-                    <button
-                      class="w-full px-3 py-1.5 text-sm text-left hover:bg-gray-50 flex items-center gap-2"
-                      [class.font-semibold]="isCurrentStatus(col.key)"
-                      [class.bg-blue-50]="isCurrentStatus(col.key)"
-                      (click)="changeStatus(col.key)"
-                    >
-                      <div class="w-2.5 h-2.5 rounded-full shrink-0" [class]="getLegendDot(col.key)"></div>
-                      {{ col.displayName }}
-                    </button>
-                  }
-                </div>
-              }
-            </div>
+            <!-- Status picker popover (outside canvas to avoid event conflicts) -->
+            @if (statusPicker()) {
+              <div
+                class="fixed z-50 bg-white rounded-lg shadow-xl border border-gray-200 py-1 w-56 max-h-72 overflow-y-auto"
+                [style.left.px]="statusPicker()!.x"
+                [style.top.px]="statusPicker()!.y"
+                (mousedown)="$event.stopPropagation()"
+                (click)="$event.stopPropagation()"
+              >
+                <div class="px-3 py-2 text-xs font-semibold text-gray-400 border-b border-gray-100">Changer le statut</div>
+                @for (col of columnDefinitions; track col.key) {
+                  <button
+                    class="w-full px-3 py-1.5 text-sm text-left hover:bg-gray-50 flex items-center gap-2"
+                    [class.font-semibold]="isCurrentStatus(col.key)"
+                    [class.bg-blue-50]="isCurrentStatus(col.key)"
+                    (click)="changeStatus(col.key)"
+                  >
+                    <div class="w-2.5 h-2.5 rounded-full shrink-0" [class]="getLegendDot(col.key)"></div>
+                    {{ col.displayName }}
+                  </button>
+                }
+              </div>
+            }
+
+            <!-- Context menu (outside canvas too) -->
+            @if (contextMenu()) {
+              <div
+                class="fixed z-50 bg-white rounded-lg shadow-lg border border-gray-200 py-1"
+                [style.left.px]="contextMenu()!.x"
+                [style.top.px]="contextMenu()!.y"
+                (mousedown)="$event.stopPropagation()"
+                (click)="$event.stopPropagation()"
+              >
+                <button class="w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 text-left" (click)="deleteEdge()">
+                  Supprimer la dépendance
+                </button>
+              </div>
+            }
           </div>
         }
       } @else {
@@ -302,7 +311,7 @@ export class GraphComponent implements AfterViewInit {
   private dragMoved = false;
 
   static readonly NODE_WIDTH = 240;
-  static readonly NODE_HEIGHT = 100;
+  static readonly NODE_HEIGHT = 120;
 
   readonly edgePaths = computed(() => {
     const nodeList = this.nodes();
@@ -358,7 +367,7 @@ export class GraphComponent implements AfterViewInit {
   @HostListener('document:click')
   onDocumentClick(): void {
     this.contextMenu.set(null);
-    // statusPicker closed by onCanvasMouseDown
+    this.statusPicker.set(null);
   }
 
   getNodeColorClasses(node: GraphNode): string {
@@ -616,7 +625,7 @@ export class GraphComponent implements AfterViewInit {
     // Position bottom-up
     const xPos = new Map<string, number>();
     const nodeW = GraphComponent.NODE_WIDTH;
-    const colGap = 50;
+    const colGap = 80;
 
     // Start from deepest layer
     for (let layer = maxLayer; layer >= 0; layer--) {
@@ -659,7 +668,7 @@ export class GraphComponent implements AfterViewInit {
       }
     }
 
-    const rowGap = 160;
+    const rowGap = 200;
     const ticketMap = new Map(tickets.map(t => [t.notionId, t]));
     const nodes: GraphNode[] = [];
 
