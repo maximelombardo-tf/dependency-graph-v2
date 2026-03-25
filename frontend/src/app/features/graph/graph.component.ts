@@ -47,7 +47,13 @@ interface GraphEdge {
           </nav>
         </div>
         <div class="flex items-center gap-3">
-          <span class="text-xs text-gray-400">Scroll: zoom / Drag fond: pan / Drag carte: déplacer</span>
+          <span class="text-xs text-gray-400">
+            @if (linkSource()) {
+              Cliquez sur un ticket cible (ESC pour annuler)
+            } @else {
+              Scroll: zoom / Drag fond: pan / Drag carte: déplacer / Points: lier
+            }
+          </span>
           <button
             class="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md"
             (click)="autoLayout()"
@@ -74,12 +80,14 @@ interface GraphEdge {
         } @else {
           <div
             #canvas
-            class="flex-1 overflow-hidden relative bg-gray-50 cursor-grab active:cursor-grabbing"
+            class="flex-1 overflow-hidden relative bg-gray-50"
+            [class.cursor-crosshair]="!!linkSource()"
+            [class.cursor-grab]="!linkSource() && !draggingNode"
             style="background-image: radial-gradient(circle, #d1d5db 1px, transparent 1px); background-size: 24px 24px;"
             (mousedown)="onCanvasMouseDown($event)"
             (mousemove)="onCanvasMouseMove($event)"
-            (mouseup)="onCanvasMouseUp()"
-            (mouseleave)="onCanvasMouseUp()"
+            (mouseup)="onCanvasMouseUp($event)"
+            (mouseleave)="onCanvasMouseUp($event)"
             (wheel)="onWheel($event)"
           >
             <div
@@ -97,14 +105,47 @@ interface GraphEdge {
                   <marker id="graph-arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
                     <polygon points="0 0, 10 3.5, 0 7" fill="#9CA3AF" />
                   </marker>
+                  <marker id="graph-arrow-blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" fill="#3B82F6" />
+                  </marker>
+                  <marker id="graph-arrow-red" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" fill="#EF4444" />
+                  </marker>
                 </defs>
+
+                <!-- Existing edges -->
                 @for (edge of edgePaths(); track edge.id) {
+                  <g class="pointer-events-auto">
+                    <!-- Wide invisible hit area -->
+                    <path
+                      [attr.d]="edge.path"
+                      fill="none"
+                      stroke="transparent"
+                      stroke-width="16"
+                      class="cursor-pointer"
+                      (contextmenu)="onEdgeRightClick($event, edge)"
+                    />
+                    <!-- Visible path -->
+                    <path
+                      [attr.d]="edge.path"
+                      fill="none"
+                      stroke="#9CA3AF"
+                      stroke-width="2"
+                      marker-end="url(#graph-arrow)"
+                      class="pointer-events-none transition-colors"
+                    />
+                  </g>
+                }
+
+                <!-- Pending link arrow -->
+                @if (pendingEdgePath()) {
                   <path
-                    [attr.d]="edge.path"
+                    [attr.d]="pendingEdgePath()"
                     fill="none"
-                    stroke="#9CA3AF"
+                    stroke="#3B82F6"
                     stroke-width="2"
-                    marker-end="url(#graph-arrow)"
+                    stroke-dasharray="8 4"
+                    marker-end="url(#graph-arrow-blue)"
                   />
                 }
               </svg>
@@ -112,18 +153,46 @@ interface GraphEdge {
               <!-- Ticket nodes -->
               @for (node of nodes(); track node.ticket.notionId) {
                 <div
-                  class="absolute select-none"
+                  class="absolute select-none group"
                   [style.left.px]="node.x"
                   [style.top.px]="node.y"
                   [style.z-index]="node.dragging ? 50 : 10"
                   (mousedown)="onNodeMouseDown($event, node)"
                 >
+                  <!-- Connection dot: left -->
                   <div
-                    class="w-56 bg-white rounded-lg border-2 p-3 shadow-md hover:shadow-lg transition-shadow cursor-grab active:cursor-grabbing"
+                    class="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full border-2 border-white shadow-md z-20 transition-all opacity-0 group-hover:opacity-100"
+                    [class.bg-blue-500]="!!linkSource()"
+                    [class.bg-gray-700]="!linkSource()"
+                    [class.opacity-100]="!!linkSource()"
+                    [class.hover:scale-150]="true"
+                    [class.cursor-pointer]="true"
+                    (mousedown)="onDotMouseDown($event, node, 'left')"
+                    (mouseup)="onDotMouseUp($event, node)"
+                  ></div>
+
+                  <!-- Connection dot: right -->
+                  <div
+                    class="absolute right-0 top-1/2 translate-x-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full border-2 border-white shadow-md z-20 transition-all opacity-0 group-hover:opacity-100"
+                    [class.bg-blue-500]="!!linkSource()"
+                    [class.bg-gray-700]="!linkSource()"
+                    [class.opacity-100]="!!linkSource()"
+                    [class.hover:scale-150]="true"
+                    [class.cursor-pointer]="true"
+                    (mousedown)="onDotMouseDown($event, node, 'right')"
+                    (mouseup)="onDotMouseUp($event, node)"
+                  ></div>
+
+                  <div
+                    class="w-56 bg-white rounded-lg border-2 p-3 shadow-md hover:shadow-lg transition-all"
                     [class.border-blue-400]="node.dragging"
-                    [class.border-gray-200]="!node.dragging"
+                    [class.border-green-400]="!!linkSource() && linkSource()!.ticketId !== node.ticket.notionId"
+                    [class.border-gray-200]="!node.dragging && !(!!linkSource() && linkSource()!.ticketId !== node.ticket.notionId)"
                     [class.ring-2]="node.dragging"
                     [class.ring-blue-200]="node.dragging"
+                    [class.cursor-grab]="!linkSource()"
+                    [class.cursor-pointer]="!!linkSource()"
+                    (click)="onNodeClick($event, node)"
                   >
                     <a
                       [href]="node.ticket.notionUrl"
@@ -131,6 +200,7 @@ interface GraphEdge {
                       rel="noopener noreferrer"
                       class="text-sm font-medium text-gray-900 hover:text-blue-600 line-clamp-2 block"
                       (mousedown)="$event.stopPropagation()"
+                      (click)="$event.stopPropagation()"
                     >
                       {{ node.ticket.title }}
                     </a>
@@ -154,6 +224,22 @@ interface GraphEdge {
                 </div>
               }
             </div>
+
+            <!-- Context menu -->
+            @if (contextMenu()) {
+              <div
+                class="fixed z-50 bg-white rounded-lg shadow-lg border border-gray-200 py-1"
+                [style.left.px]="contextMenu()!.x"
+                [style.top.px]="contextMenu()!.y"
+              >
+                <button
+                  class="w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 text-left"
+                  (click)="deleteEdge()"
+                >
+                  Supprimer la dépendance
+                </button>
+              </div>
+            }
           </div>
         }
       } @else {
@@ -182,10 +268,17 @@ export class GraphComponent implements AfterViewInit {
   readonly panY = signal(0);
   readonly svgSize = signal(5000);
 
+  // Link mode
+  readonly linkSource = signal<{ ticketId: string; side: 'left' | 'right' } | null>(null);
+  readonly mousePos = signal<{ x: number; y: number } | null>(null);
+
+  // Context menu
+  readonly contextMenu = signal<{ x: number; y: number; edge: GraphEdge } | null>(null);
+
   private isPanning = false;
   private panStartX = 0;
   private panStartY = 0;
-  private draggingNode: GraphNode | null = null;
+  draggingNode: GraphNode | null = null;
   private dragOffsetX = 0;
   private dragOffsetY = 0;
 
@@ -203,20 +296,35 @@ export class GraphComponent implements AfterViewInit {
         const to = nodeMap.get(e.to);
         if (!from || !to) return null;
 
-        const fromCx = from.x + GraphComponent.NODE_WIDTH;
-        const fromCy = from.y + GraphComponent.NODE_HEIGHT / 2;
-        const toCx = to.x;
-        const toCy = to.y + GraphComponent.NODE_HEIGHT / 2;
-
-        const dx = Math.abs(toCx - fromCx);
-        const offset = Math.max(60, dx * 0.4);
-
-        return {
-          id: `${e.from}-${e.to}`,
-          path: `M ${fromCx} ${fromCy} C ${fromCx + offset} ${fromCy}, ${toCx - offset} ${toCy}, ${toCx} ${toCy}`,
-        };
+        const path = this.computeEdgePath(from, to);
+        return { id: `${e.from}-${e.to}`, path, from: e.from, to: e.to };
       })
-      .filter((e): e is { id: string; path: string } => e !== null);
+      .filter((e): e is { id: string; path: string; from: string; to: string } => e !== null);
+  });
+
+  readonly pendingEdgePath = computed(() => {
+    const source = this.linkSource();
+    const mouse = this.mousePos();
+    if (!source || !mouse) return null;
+
+    const nodeList = this.nodes();
+    const sourceNode = nodeList.find(n => n.ticket.notionId === source.ticketId);
+    if (!sourceNode) return null;
+
+    const fromX = source.side === 'right'
+      ? sourceNode.x + GraphComponent.NODE_WIDTH
+      : sourceNode.x;
+    const fromY = sourceNode.y + GraphComponent.NODE_HEIGHT / 2;
+
+    // Convert mouse pos (screen) to graph coordinates
+    const z = this.zoom();
+    const toX = (mouse.x - this.panX()) / z;
+    const toY = (mouse.y - this.panY()) / z;
+
+    const dx = Math.abs(toX - fromX);
+    const offset = Math.max(60, dx * 0.4);
+
+    return `M ${fromX} ${fromY} C ${fromX + offset} ${fromY}, ${toX - offset} ${toY}, ${toX} ${toY}`;
   });
 
   constructor() {
@@ -230,6 +338,183 @@ export class GraphComponent implements AfterViewInit {
   }
 
   ngAfterViewInit(): void {}
+
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    this.cancelLink();
+    this.contextMenu.set(null);
+  }
+
+  @HostListener('document:click')
+  onDocumentClick(): void {
+    this.contextMenu.set(null);
+  }
+
+  // --- Link mode ---
+
+  onDotMouseDown(event: MouseEvent, node: GraphNode, side: 'left' | 'right'): void {
+    event.stopPropagation();
+    event.preventDefault();
+    this.linkSource.set({ ticketId: node.ticket.notionId, side });
+  }
+
+  onDotMouseUp(event: MouseEvent, node: GraphNode): void {
+    event.stopPropagation();
+    this.completeLink(node.ticket.notionId);
+  }
+
+  onNodeClick(event: MouseEvent, node: GraphNode): void {
+    if (this.linkSource()) {
+      event.stopPropagation();
+      this.completeLink(node.ticket.notionId);
+    }
+  }
+
+  private completeLink(targetId: string): void {
+    const source = this.linkSource();
+    if (!source || source.ticketId === targetId) {
+      this.cancelLink();
+      return;
+    }
+
+    // Check if edge already exists
+    const exists = this.edges().some(e => e.from === source.ticketId && e.to === targetId);
+    if (exists) {
+      this.toastService.error('Cette dépendance existe déjà.');
+      this.cancelLink();
+      return;
+    }
+
+    const team = this.teamConfigService.selectedTeam();
+    if (!team) return;
+
+    const fromTicket = this.tickets().find(t => t.notionId === source.ticketId);
+    if (!fromTicket) return;
+
+    // Optimistic update
+    this.edges.update(edges => [...edges, { from: source.ticketId, to: targetId }]);
+    this.tickets.update(tickets =>
+      tickets.map(t =>
+        t.notionId === source.ticketId
+          ? { ...t, dependencyIds: [...t.dependencyIds, targetId] }
+          : t
+      )
+    );
+    this.nodes.update(nodes =>
+      nodes.map(n =>
+        n.ticket.notionId === source.ticketId
+          ? { ...n, ticket: { ...n.ticket, dependencyIds: [...n.ticket.dependencyIds, targetId] } }
+          : n
+      )
+    );
+    this.cancelLink();
+
+    // Sync Notion
+    this.notionService.addDependency(
+      source.ticketId,
+      fromTicket.dependencyIds,
+      targetId,
+      team.propertiesName.bloque,
+    ).subscribe({
+      next: () => this.toastService.success('Dépendance créée.'),
+      error: err => {
+        console.error('Failed to add dependency:', err);
+        this.toastService.error('Erreur lors de la création de la dépendance.');
+        // Revert
+        this.edges.update(edges => edges.filter(e => !(e.from === source.ticketId && e.to === targetId)));
+        this.tickets.update(tickets =>
+          tickets.map(t =>
+            t.notionId === source.ticketId
+              ? { ...t, dependencyIds: t.dependencyIds.filter(id => id !== targetId) }
+              : t
+          )
+        );
+        this.nodes.update(nodes =>
+          nodes.map(n =>
+            n.ticket.notionId === source.ticketId
+              ? { ...n, ticket: { ...n.ticket, dependencyIds: n.ticket.dependencyIds.filter(id => id !== targetId) } }
+              : n
+          )
+        );
+      },
+    });
+  }
+
+  cancelLink(): void {
+    this.linkSource.set(null);
+    this.mousePos.set(null);
+  }
+
+  // --- Delete edge ---
+
+  onEdgeRightClick(event: MouseEvent, edge: { id: string; from: string; to: string }): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.contextMenu.set({ x: event.clientX, y: event.clientY, edge: { from: edge.from, to: edge.to } });
+  }
+
+  deleteEdge(): void {
+    const menu = this.contextMenu();
+    if (!menu) return;
+
+    const team = this.teamConfigService.selectedTeam();
+    if (!team) return;
+
+    const fromTicket = this.tickets().find(t => t.notionId === menu.edge.from);
+    if (!fromTicket) return;
+
+    const { from, to } = menu.edge;
+
+    // Optimistic update
+    this.edges.update(edges => edges.filter(e => !(e.from === from && e.to === to)));
+    this.tickets.update(tickets =>
+      tickets.map(t =>
+        t.notionId === from
+          ? { ...t, dependencyIds: t.dependencyIds.filter(id => id !== to) }
+          : t
+      )
+    );
+    this.nodes.update(nodes =>
+      nodes.map(n =>
+        n.ticket.notionId === from
+          ? { ...n, ticket: { ...n.ticket, dependencyIds: n.ticket.dependencyIds.filter(id => id !== to) } }
+          : n
+      )
+    );
+    this.contextMenu.set(null);
+
+    // Sync Notion
+    this.notionService.removeDependency(
+      from,
+      fromTicket.dependencyIds,
+      to,
+      team.propertiesName.bloque,
+    ).subscribe({
+      next: () => this.toastService.success('Dépendance supprimée.'),
+      error: err => {
+        console.error('Failed to remove dependency:', err);
+        this.toastService.error('Erreur lors de la suppression.');
+        // Revert
+        this.edges.update(edges => [...edges, { from, to }]);
+        this.tickets.update(tickets =>
+          tickets.map(t =>
+            t.notionId === from
+              ? { ...t, dependencyIds: [...t.dependencyIds, to] }
+              : t
+          )
+        );
+        this.nodes.update(nodes =>
+          nodes.map(n =>
+            n.ticket.notionId === from
+              ? { ...n, ticket: { ...n.ticket, dependencyIds: [...n.ticket.dependencyIds, to] } }
+              : n
+          )
+        );
+      },
+    });
+  }
+
+  // --- Data loading ---
 
   fetchTickets(): void {
     const team = this.teamConfigService.selectedTeam();
@@ -254,7 +539,6 @@ export class GraphComponent implements AfterViewInit {
   private buildGraph(tickets: Ticket[]): void {
     const ticketIds = new Set(tickets.map(t => t.notionId));
 
-    // Build edges
     const edges: GraphEdge[] = [];
     for (const ticket of tickets) {
       for (const depId of ticket.dependencyIds) {
@@ -265,17 +549,12 @@ export class GraphComponent implements AfterViewInit {
     }
     this.edges.set(edges);
 
-    // Auto layout
     const nodes = this.computeLayout(tickets, edges);
     this.nodes.set(nodes);
-
-    // Center view
     this.centerView(nodes);
   }
 
   private computeLayout(tickets: Ticket[], edges: GraphEdge[]): GraphNode[] {
-    // Topological-ish layout: tickets with no incoming edges go left,
-    // then their dependents go right
     const incomingCount = new Map<string, number>();
     const outgoing = new Map<string, string[]>();
     tickets.forEach(t => {
@@ -287,11 +566,9 @@ export class GraphComponent implements AfterViewInit {
       outgoing.get(e.from)?.push(e.to);
     });
 
-    // Assign layers via BFS
     const layers = new Map<string, number>();
     const queue: string[] = [];
 
-    // Start with nodes that have no incoming edges
     tickets.forEach(t => {
       if ((incomingCount.get(t.notionId) || 0) === 0) {
         layers.set(t.notionId, 0);
@@ -311,14 +588,10 @@ export class GraphComponent implements AfterViewInit {
       }
     }
 
-    // Assign unvisited nodes to layer 0
     tickets.forEach(t => {
-      if (!layers.has(t.notionId)) {
-        layers.set(t.notionId, 0);
-      }
+      if (!layers.has(t.notionId)) layers.set(t.notionId, 0);
     });
 
-    // Group by layer
     const layerGroups = new Map<number, Ticket[]>();
     tickets.forEach(t => {
       const layer = layers.get(t.notionId) || 0;
@@ -379,6 +652,18 @@ export class GraphComponent implements AfterViewInit {
     this.centerView(nodes);
   }
 
+  private computeEdgePath(from: GraphNode, to: GraphNode): string {
+    const fromCx = from.x + GraphComponent.NODE_WIDTH;
+    const fromCy = from.y + GraphComponent.NODE_HEIGHT / 2;
+    const toCx = to.x;
+    const toCy = to.y + GraphComponent.NODE_HEIGHT / 2;
+
+    const dx = Math.abs(toCx - fromCx);
+    const offset = Math.max(60, dx * 0.4);
+
+    return `M ${fromCx} ${fromCy} C ${fromCx + offset} ${fromCy}, ${toCx - offset} ${toCy}, ${toCx} ${toCy}`;
+  }
+
   // --- Pan & Zoom ---
 
   onWheel(event: WheelEvent): void {
@@ -386,7 +671,6 @@ export class GraphComponent implements AfterViewInit {
     const delta = event.deltaY > 0 ? 0.9 : 1.1;
     const newZoom = Math.max(0.1, Math.min(3, this.zoom() * delta));
 
-    // Zoom toward cursor
     const rect = this.canvasRef.nativeElement.getBoundingClientRect();
     const mouseX = event.clientX - rect.left;
     const mouseY = event.clientY - rect.top;
@@ -398,6 +682,11 @@ export class GraphComponent implements AfterViewInit {
   }
 
   onCanvasMouseDown(event: MouseEvent): void {
+    if (this.linkSource()) {
+      // Clicking on empty space cancels link mode
+      this.cancelLink();
+      return;
+    }
     if (this.draggingNode) return;
     this.isPanning = true;
     this.panStartX = event.clientX - this.panX();
@@ -405,6 +694,12 @@ export class GraphComponent implements AfterViewInit {
   }
 
   onCanvasMouseMove(event: MouseEvent): void {
+    // Update mouse position for pending link arrow
+    if (this.linkSource()) {
+      const rect = this.canvasRef.nativeElement.getBoundingClientRect();
+      this.mousePos.set({ x: event.clientX - rect.left, y: event.clientY - rect.top });
+    }
+
     if (this.draggingNode) {
       const z = this.zoom();
       const newX = (event.clientX - this.panX()) / z - this.dragOffsetX;
@@ -423,7 +718,7 @@ export class GraphComponent implements AfterViewInit {
     }
   }
 
-  onCanvasMouseUp(): void {
+  onCanvasMouseUp(event?: MouseEvent): void {
     if (this.draggingNode) {
       this.nodes.update(nodes =>
         nodes.map(n =>
@@ -438,6 +733,7 @@ export class GraphComponent implements AfterViewInit {
   }
 
   onNodeMouseDown(event: MouseEvent, node: GraphNode): void {
+    if (this.linkSource()) return; // Don't start drag in link mode
     event.stopPropagation();
     const z = this.zoom();
     this.dragOffsetX = (event.clientX - this.panX()) / z - node.x;
