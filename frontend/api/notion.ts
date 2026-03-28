@@ -1,13 +1,21 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { kv } from '@vercel/kv';
+import { Redis } from '@upstash/redis';
 
 const FALLBACK_TOKEN = process.env['NOTION_API_TOKEN'] || '';
 const NOTION_API_VERSION = process.env['NOTION_API_VERSION'] || '2022-06-28';
 
+function getRedis(): Redis {
+  return new Redis({
+    url: process.env['UPSTASH_REDIS_REST_URL'] || process.env['KV_REST_API_URL'] || '',
+    token: process.env['UPSTASH_REDIS_REST_TOKEN'] || process.env['KV_REST_API_TOKEN'] || '',
+  });
+}
+
 async function getNotionToken(teamId: string | undefined): Promise<string> {
   if (!teamId) return FALLBACK_TOKEN;
   try {
-    const team = await kv.get<{ notionApiToken?: string }>(`team:${teamId}`);
+    const redis = getRedis();
+    const team = await redis.get<{ notionApiToken?: string }>(`team:${teamId}`);
     return team?.notionApiToken || FALLBACK_TOKEN;
   } catch {
     return FALLBACK_TOKEN;
