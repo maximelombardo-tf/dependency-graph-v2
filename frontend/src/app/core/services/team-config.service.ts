@@ -58,21 +58,15 @@ export class TeamConfigService {
       next: teams => {
         if (teams.length > 0) {
           this.teams.set(teams);
-          this.reapplySelection();
         }
+        // Always re-run restore after API teams arrive, so teams
+        // that exist only in the API (not in FALLBACK) get selected
+        this.restoreSelection();
       },
       error: () => {
         // Silently fall back to hardcoded teams (local dev or API unavailable)
       },
     });
-  }
-
-  private reapplySelection(): void {
-    const current = this.selectedTeam();
-    if (current) {
-      const refreshed = this.teams().find(t => t.name === current.name);
-      if (refreshed) this.selectedTeam.set(refreshed);
-    }
   }
 
   selectTeam(team: TeamConfig): void {

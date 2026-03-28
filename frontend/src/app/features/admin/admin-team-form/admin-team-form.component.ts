@@ -1,7 +1,46 @@
 import { Component, inject, input, output, signal, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AdminService, TeamWithToken } from '../../../core/services/admin.service';
-import { TeamConfig, DEFAULT_PROPERTIES_CONFIG } from '../../../core/models/team-config.model';
+import { TeamConfig } from '../../../core/models/team-config.model';
+
+const DOCUMENTED_DEFAULT_JSON = `{
+  // ── Noms des propriétés dans votre base Notion US ──
+  // Adaptez chaque valeur au nom exact du champ dans votre base Notion.
+  "propertiesName": {
+    "id":         "ID",              // Champ identifiant du ticket
+    "title":      "Name",            // Champ titre du ticket
+    "status":     "Status",          // Champ statut (select)
+    "complexity": "Size",            // Champ complexité / points
+    "bloque":     "Bloque",          // Champ relation "bloqué par" (dépendances)
+    "epic":       "Epic",            // Champ relation vers la base Epic
+    "epicName":   "Name",            // Champ titre dans la base Epic
+    "assignedTo": "Assign",          // Champ assignation (people)
+
+    // ── Mapping des statuts Notion → colonnes du kanban ──
+    // Chaque clé correspond à une colonne. La valeur est un tableau
+    // des noms de statuts Notion qui vont dans cette colonne.
+    // Mettez un tableau vide [] si la colonne n'existe pas pour cette équipe.
+    "statuses": {
+      "backlogToPrepare": ["02 - Backlog à préparer"],
+      "toChallenge":      ["1 Backlog"],
+      "toStrat":          ["2 Strat tech"],
+      "toDev":            ["21 - Backlog ready"],
+      "sprintBacklog":    ["3 Sprint backlog"],
+      "isInProgress":     ["4 Daily Goals", "5 Doing", "61 Code review"],
+      "done":             ["9 Done Sprint actuel"],
+      "toValidate":       ["8 A valider", "81 To Ship (Prod)"],
+      "blocked":          ["7 Blocked"]
+    }
+  },
+
+  // ── Filtres appliqués sur la base Epic (optionnel) ──
+  // Permet de ne montrer que certaines épics.
+  // Types possibles : "select", "status", "multi_select"
+  // Laissez un tableau vide [] pour afficher toutes les épics.
+  "epicFilter": [
+    { "property": "Status", "type": "select", "value": "Delivery Team" }
+  ]
+}`;
 
 @Component({
   selector: 'app-admin-team-form',
@@ -26,7 +65,7 @@ import { TeamConfig, DEFAULT_PROPERTIES_CONFIG } from '../../../core/models/team
               name="name"
               required
               class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="ex: Flash"
+              placeholder="ex: Flash, Openfinance..."
             />
           </div>
 
@@ -45,44 +84,53 @@ import { TeamConfig, DEFAULT_PROPERTIES_CONFIG } from '../../../core/models/team
               class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="ntn_xxxxxxxxxxxx"
             />
+            <p class="text-xs text-gray-400 mt-1">
+              Trouvable dans Notion > Settings > Integrations > votre intégration > Internal Integration Secret
+            </p>
           </div>
 
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Epic Database ID *</label>
-            <input
-              type="text"
-              [(ngModel)]="epicDatabaseId"
-              name="epicDatabaseId"
-              required
-              class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-            />
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Epic Database ID *</label>
+              <input
+                type="text"
+                [(ngModel)]="epicDatabaseId"
+                name="epicDatabaseId"
+                required
+                class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="xxxxxxxx-xxxx-..."
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">US Database ID *</label>
+              <input
+                type="text"
+                [(ngModel)]="usDatabaseId"
+                name="usDatabaseId"
+                required
+                class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="xxxxxxxx-xxxx-..."
+              />
+            </div>
           </div>
-
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">US Database ID *</label>
-            <input
-              type="text"
-              [(ngModel)]="usDatabaseId"
-              name="usDatabaseId"
-              required
-              class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-            />
-          </div>
+          <p class="text-xs text-gray-400 -mt-2">
+            Ouvrez la base Notion en page entiere, le Database ID est dans l'URL :
+            notion.so/<strong>DATABASE_ID</strong>?v=...
+          </p>
 
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">
               Configuration avancée (JSON)
             </label>
-            <p class="text-xs text-gray-500 mb-2">
-              Mappings des propriétés Notion et filtres d'épics. Pré-rempli avec les defaults Flash.
-            </p>
+            <div class="text-xs text-gray-500 mb-2 space-y-1">
+              <p>Ce JSON definit le mapping entre vos propriétés Notion et les colonnes du kanban.</p>
+              <p>Les commentaires (<code>//</code>) sont autorises et seront retirés automatiquement.</p>
+            </div>
             <textarea
               [(ngModel)]="advancedConfigJson"
               name="advancedConfigJson"
-              rows="12"
-              class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+              rows="20"
+              class="w-full rounded-md border border-gray-300 px-3 py-2 text-xs font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-500"
             ></textarea>
             @if (jsonError()) {
               <p class="text-xs text-red-600 mt-1">JSON invalide : {{ jsonError() }}</p>
@@ -143,7 +191,7 @@ export class AdminTeamFormComponent implements OnInit {
         2
       );
     } else {
-      this.advancedConfigJson = JSON.stringify(DEFAULT_PROPERTIES_CONFIG, null, 2);
+      this.advancedConfigJson = DOCUMENTED_DEFAULT_JSON;
     }
   }
 
@@ -151,9 +199,12 @@ export class AdminTeamFormComponent implements OnInit {
     this.jsonError.set('');
     this.error.set('');
 
+    // Strip JS-style comments before parsing JSON
+    const cleaned = this.advancedConfigJson.replace(/\/\/.*$/gm, '');
+
     let advancedConfig: { propertiesName: unknown; epicFilter?: unknown };
     try {
-      advancedConfig = JSON.parse(this.advancedConfigJson);
+      advancedConfig = JSON.parse(cleaned);
     } catch (e) {
       this.jsonError.set((e as Error).message);
       return;

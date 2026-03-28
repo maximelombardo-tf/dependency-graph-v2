@@ -94,10 +94,10 @@ export class AuthService {
       return;
     }
 
-    sessionStorage.setItem('google_token', response.credential);
-    sessionStorage.setItem('user_email', payload.email);
-    sessionStorage.setItem('user_name', payload.name);
-    sessionStorage.setItem('user_picture', payload.picture);
+    localStorage.setItem('google_token', response.credential);
+    localStorage.setItem('user_email', payload.email);
+    localStorage.setItem('user_name', payload.name);
+    localStorage.setItem('user_picture', payload.picture);
 
     this.isAuthenticated.set(true);
     this.userEmail.set(payload.email);
@@ -109,10 +109,10 @@ export class AuthService {
   }
 
   logout(): void {
-    sessionStorage.removeItem('google_token');
-    sessionStorage.removeItem('user_email');
-    sessionStorage.removeItem('user_name');
-    sessionStorage.removeItem('user_picture');
+    localStorage.removeItem('google_token');
+    localStorage.removeItem('user_email');
+    localStorage.removeItem('user_name');
+    localStorage.removeItem('user_picture');
 
     this.isAuthenticated.set(false);
     this.userEmail.set(null);
@@ -123,11 +123,11 @@ export class AuthService {
   }
 
   getIdToken(): string | null {
-    return sessionStorage.getItem('google_token');
+    return localStorage.getItem('google_token');
   }
 
   private restoreSession(): void {
-    const token = sessionStorage.getItem('google_token');
+    const token = localStorage.getItem('google_token');
     if (token) {
       const payload = this.decodeJwt(token);
       if (payload) {
