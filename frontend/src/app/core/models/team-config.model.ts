@@ -31,12 +31,40 @@ export interface EpicFilterCondition {
 export type EpicFilter = EpicFilterCondition[];
 
 export interface TeamConfig {
+  id: string;
   name: string;
   epicDatabaseId: string;
   usDatabaseId: string;
   propertiesName: PropertiesName;
   epicFilter?: EpicFilter;
 }
+
+export const DEFAULT_PROPERTIES_CONFIG: { propertiesName: PropertiesName; epicFilter: EpicFilter } = {
+  propertiesName: {
+    id: 'ID',
+    title: 'Name',
+    status: 'Status',
+    complexity: 'Size',
+    bloque: 'Bloque',
+    statuses: {
+      backlogToPrepare: ['02 - Backlog à préparer'],
+      toChallenge: ['1 🛹 Backlog'],
+      toStrat: ['2 🛴 Strat tech'],
+      toDev: ['21 - Backlog ready'],
+      sprintBacklog: ['3 🛴 Sprint backlog'],
+      isInProgress: ['4 🎯Daily Goals', '5 👨🏻‍💻 Doing', '61 👁️ Code review', '62 🚀 To Deploy Preprod'],
+      done: ['9 🎯 Done Sprint actuel', 'Anciens Sprints'],
+      toValidate: ['8 👀 A valider', '81 🚢 To Ship (Prod)'],
+      blocked: ['7 🚨 Blocked'],
+    },
+    epic: 'Epic',
+    epicName: 'Name',
+    assignedTo: 'Assign',
+  },
+  epicFilter: [
+    { property: 'Status', type: 'select', value: 'Delivery Team' },
+  ],
+};
 
 export type ColumnKey = keyof StatusMapping;
 

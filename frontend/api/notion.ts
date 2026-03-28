@@ -1,17 +1,31 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { kv } from '@vercel/kv';
 
-const NOTION_API_TOKEN = process.env['NOTION_API_TOKEN'] || '';
+const FALLBACK_TOKEN = process.env['NOTION_API_TOKEN'] || '';
 const NOTION_API_VERSION = process.env['NOTION_API_VERSION'] || '2022-06-28';
+
+async function getNotionToken(teamId: string | undefined): Promise<string> {
+  if (!teamId) return FALLBACK_TOKEN;
+  try {
+    const team = await kv.get<{ notionApiToken?: string }>(`team:${teamId}`);
+    return team?.notionApiToken || FALLBACK_TOKEN;
+  } catch {
+    return FALLBACK_TOKEN;
+  }
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Team-Id');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
+
+  const teamId = req.headers['x-team-id'] as string | undefined;
+  const notionToken = await getNotionToken(teamId);
 
   // Strip /api/notion prefix to get the Notion API path
   const url = req.url || '';
@@ -22,7 +36,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const response = await fetch(notionUrl, {
       method: req.method || 'GET',
       headers: {
-        'Authorization': `Bearer ${NOTION_API_TOKEN}`,
+        'Authorization': `Bearer ${notionToken}`,
         'Notion-Version': NOTION_API_VERSION,
         'Content-Type': 'application/json',
       },

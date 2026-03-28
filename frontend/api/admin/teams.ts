@@ -1,0 +1,102 @@
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { kv } from '@vercel/kv';
+import { verifyAdminToken } from '../_lib/jwt.js';
+import { randomUUID } from 'crypto';
+
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Token',
+};
+
+async function requireAdmin(req: VercelRequest): Promise<boolean> {
+  const token = req.headers['x-admin-token'] as string | undefined;
+  if (!token) return false;
+  return verifyAdminToken(token);
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  Object.entries(CORS_HEADERS).forEach(([k, v]) => res.setHeader(k, v));
+
+  if (req.method === 'OPTIONS') return res.status(200).end();
+
+  // GET /api/admin/teams — public: returns team configs without notionApiToken
+  if (req.method === 'GET') {
+    const ids: string[] = (await kv.get('teams:list')) ?? [];
+    if (ids.length === 0) return res.status(200).json([]);
+
+    const teams = await Promise.all(
+      ids.map(id => kv.get<Record<string, unknown>>(`team:${id}`))
+    );
+
+    const publicTeams = teams
+      .filter(Boolean)
+      .map(team => {
+        const { notionApiToken: _, ...publicTeam } = team as Record<string, unknown> & { notionApiToken?: string };
+        return publicTeam;
+      });
+
+    return res.status(200).json(publicTeams);
+  }
+
+  // All write operations require admin token
+  const isAdmin = await requireAdmin(req);
+  if (!isAdmin) return res.status(401).json({ error: 'Unauthorized' });
+
+  // POST /api/admin/teams — create team
+  if (req.method === 'POST') {
+    const { notionApiToken, name, epicDatabaseId, usDatabaseId, propertiesName, epicFilter } = req.body ?? {};
+    if (!notionApiToken || !name || !epicDatabaseId || !usDatabaseId || !propertiesName) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const id = randomUUID();
+    const team = { id, name, epicDatabaseId, usDatabaseId, propertiesName, epicFilter, notionApiToken };
+
+    await kv.set(`team:${id}`, team);
+    const ids: string[] = (await kv.get('teams:list')) ?? [];
+    await kv.set('teams:list', [...ids, id]);
+
+    const { notionApiToken: _, ...publicTeam } = team;
+    return res.status(201).json(publicTeam);
+  }
+
+  // PUT /api/admin/teams — update team
+  if (req.method === 'PUT') {
+    const { id, notionApiToken, name, epicDatabaseId, usDatabaseId, propertiesName, epicFilter } = req.body ?? {};
+    if (!id || !name || !epicDatabaseId || !usDatabaseId || !propertiesName) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const existing = await kv.get<Record<string, unknown>>(`team:${id}`);
+    if (!existing) return res.status(404).json({ error: 'Team not found' });
+
+    const team = {
+      ...existing,
+      name,
+      epicDatabaseId,
+      usDatabaseId,
+      propertiesName,
+      epicFilter,
+      notionApiToken: notionApiToken || existing['notionApiToken'],
+    };
+
+    await kv.set(`team:${id}`, team);
+    const { notionApiToken: _, ...publicTeam } = team as Record<string, unknown> & { notionApiToken?: string };
+    return res.status(200).json(publicTeam);
+  }
+
+  // DELETE /api/admin/teams?id=xxx — delete team
+  if (req.method === 'DELETE') {
+    const id = req.query['id'] as string | undefined;
+    if (!id) return res.status(400).json({ error: 'Missing id' });
+
+    await kv.del(`team:${id}`);
+    const ids: string[] = (await kv.get('teams:list')) ?? [];
+    await kv.set('teams:list', ids.filter(i => i !== id));
+
+    return res.status(200).json({ success: true });
+  }
+
+  return res.status(405).json({ error: 'Method not allowed' });
+}
