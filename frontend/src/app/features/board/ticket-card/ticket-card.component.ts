@@ -13,18 +13,6 @@ import { Ticket } from '../../../core/models/ticket.model';
       class="group relative bg-white rounded-lg border border-gray-200 p-3 shadow-sm hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing"
       (click)="onCardClick($event)"
     >
-      <!-- Dependency dots (left) -->
-      <div
-        class="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 bg-gray-800 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:bg-blue-600 hover:scale-125 z-10"
-        (mousedown)="onLinkStart($event, 'left')"
-      ></div>
-
-      <!-- Dependency dots (right) -->
-      <div
-        class="absolute right-0 top-1/2 translate-x-1/2 -translate-y-1/2 w-3 h-3 bg-gray-800 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:bg-blue-600 hover:scale-125 z-10"
-        (mousedown)="onLinkStart($event, 'right')"
-      ></div>
-
       <div class="flex items-start justify-between gap-2">
         <div class="flex-1 min-w-0">
           <a
