@@ -12,7 +12,7 @@ import { TeamConfig, DEFAULT_PROPERTIES_CONFIG } from '../../../core/models/team
       <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
           <h2 class="text-lg font-semibold text-gray-900">
-            {{ team() ? 'Modifier l\'équipe' : 'Nouvelle équipe' }}
+            {{ team() ? "Modifier l'équipe" : 'Nouvelle équipe' }}
           </h2>
           <button (click)="cancelled.emit()" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
         </div>
