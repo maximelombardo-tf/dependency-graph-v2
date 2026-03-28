@@ -105,7 +105,7 @@ export class AuthService {
     this.userPicture.set(payload.picture);
     this.authError.set(null);
 
-    this.router.navigate(['/board']);
+    this.router.navigate(['/graph']);
   }
 
   logout(): void {
