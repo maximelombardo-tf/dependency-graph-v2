@@ -15,11 +15,18 @@ import { Epic } from '../../core/models/ticket.model';
           id="team-select"
           class="rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           [value]="teamConfigService.selectedTeam()?.name || ''"
+          [disabled]="teamConfigService.loadingTeams()"
           (change)="onTeamChange($event)"
         >
-          <option value="" disabled>Choisir une équipe</option>
-          @for (team of teamConfigService.teams(); track team.name) {
-            <option [value]="team.name">{{ team.name }}</option>
+          @if (teamConfigService.loadingTeams()) {
+            <option value="" disabled>Chargement...</option>
+          } @else if (teamConfigService.teams().length === 0) {
+            <option value="" disabled>Aucune équipe configurée</option>
+          } @else {
+            <option value="" disabled>Choisir une équipe</option>
+            @for (team of teamConfigService.teams(); track team.name) {
+              <option [value]="team.name">{{ team.name }}</option>
+            }
           }
         </select>
       </div>
@@ -59,8 +66,6 @@ export class SelectorComponent {
   readonly epicSelected = output<Epic>();
 
   constructor() {
-    this.teamConfigService.restoreSelection();
-
     effect(() => {
       const team = this.teamConfigService.selectedTeam();
       if (team) {

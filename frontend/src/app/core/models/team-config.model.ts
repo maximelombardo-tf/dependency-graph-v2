@@ -47,23 +47,21 @@ export const DEFAULT_PROPERTIES_CONFIG: { propertiesName: PropertiesName; epicFi
     complexity: 'Size',
     bloque: 'Bloque',
     statuses: {
-      backlogToPrepare: ['02 - Backlog à préparer'],
-      toChallenge: ['1 🛹 Backlog'],
-      toStrat: ['2 🛴 Strat tech'],
-      toDev: ['21 - Backlog ready'],
-      sprintBacklog: ['3 🛴 Sprint backlog'],
-      isInProgress: ['4 🎯Daily Goals', '5 👨🏻‍💻 Doing', '61 👁️ Code review', '62 🚀 To Deploy Preprod'],
-      done: ['9 🎯 Done Sprint actuel', 'Anciens Sprints'],
-      toValidate: ['8 👀 A valider', '81 🚢 To Ship (Prod)'],
-      blocked: ['7 🚨 Blocked'],
+      backlogToPrepare: [],
+      toChallenge: [],
+      toStrat: [],
+      toDev: [],
+      sprintBacklog: [],
+      isInProgress: [],
+      done: [],
+      toValidate: [],
+      blocked: [],
     },
     epic: 'Epic',
     epicName: 'Name',
     assignedTo: 'Assign',
   },
-  epicFilter: [
-    { property: 'Status', type: 'select', value: 'Delivery Team' },
-  ],
+  epicFilter: [],
 };
 
 export type ColumnKey = keyof StatusMapping;
