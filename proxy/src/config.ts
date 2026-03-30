@@ -7,4 +7,5 @@ export const config = {
   notionApiToken: process.env['NOTION_API_TOKEN'] || process.env['NOTION_API_TOKEN_FLASH'] || '',
   notionApiVersion: process.env['NOTION_API_VERSION'] || '2022-06-28',
   allowedOrigins: (process.env['ALLOWED_ORIGINS'] || 'http://localhost:4200').split(','),
+  adminPassword: process.env['ADMIN_PASSWORD'] || 'admin',
 };
