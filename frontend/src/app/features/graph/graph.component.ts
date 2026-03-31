@@ -59,7 +59,7 @@ function getStatusColor(columnKey: ColumnKey | null): { bg: string; border: stri
     toChallenge:      { bg: 'bg-amber-50',   border: 'border-amber-300' },
     toStrat:          { bg: 'bg-purple-50',  border: 'border-purple-300' },
     toDev:            { bg: 'bg-green-50',   border: 'border-green-300' },
-    sprintBacklog:    { bg: 'bg-slate-50',   border: 'border-slate-300' },
+    sprintBacklog:    { bg: 'bg-sky-50',     border: 'border-sky-300' },
     isInProgress:     { bg: 'bg-blue-50',    border: 'border-blue-400' },
     toValidate:       { bg: 'bg-indigo-50',  border: 'border-indigo-300' },
     blocked:          { bg: 'bg-red-50',     border: 'border-red-400' },
@@ -73,7 +73,7 @@ const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
   { key: 'toChallenge',      label: 'A challenger',       dotClass: 'bg-amber-400' },
   { key: 'toStrat',          label: 'A strater',          dotClass: 'bg-purple-400' },
   { key: 'toDev',            label: 'Prêt pour le dev',   dotClass: 'bg-green-400' },
-  { key: 'sprintBacklog',    label: 'Sprint Backlog',     dotClass: 'bg-slate-400' },
+  { key: 'sprintBacklog',    label: 'Sprint Backlog',     dotClass: 'bg-sky-400' },
   { key: 'isInProgress',     label: 'En cours',           dotClass: 'bg-blue-500' },
   { key: 'toValidate',       label: 'A valider',          dotClass: 'bg-indigo-400' },
   { key: 'blocked',          label: 'Bloqué',             dotClass: 'bg-red-500' },
@@ -176,7 +176,7 @@ const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
                 <!-- Group rectangles -->
                 @for (group of groups(); track group.id) {
                   <div
-                    class="absolute rounded-xl border-2 select-none"
+                    class="absolute rounded-xl border-2 select-none group/grp"
                     [style.left.px]="group.x"
                     [style.top.px]="group.y"
                     [style.width.px]="group.w"
@@ -198,7 +198,7 @@ const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
                     </div>
 
                     <!-- Color picker & delete (top-right) -->
-                    <div class="absolute -top-7 right-0 flex items-center gap-1 opacity-0 hover:opacity-100 transition-opacity" style="pointer-events: auto;" (mousedown)="$event.stopPropagation()">
+                    <div class="absolute -top-7 right-0 flex items-center gap-1 opacity-0 group-hover/grp:opacity-100 transition-opacity" style="pointer-events: auto;" (mousedown)="$event.stopPropagation()">
                       @for (c of groupColors; track c.hex) {
                         <button
                           class="w-4 h-4 rounded-full border border-white shadow-sm"
@@ -854,7 +854,7 @@ export class GraphComponent implements AfterViewInit {
 
     if (event.ctrlKey || event.metaKey) {
       // Pinch-to-zoom or Ctrl+wheel → zoom (slow factor)
-      const factor = 1 - event.deltaY * 0.003;
+      const factor = 1 - event.deltaY * 0.008;
       const newZoom = Math.max(0.1, Math.min(3, this.zoom() * factor));
       const rect = this.canvasRef.nativeElement.getBoundingClientRect();
       const mouseX = event.clientX - rect.left;
