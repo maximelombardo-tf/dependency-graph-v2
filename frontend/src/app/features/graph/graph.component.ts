@@ -32,6 +32,27 @@ interface GraphEdge {
   to: string;
 }
 
+interface GraphGroup {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  color: string; // hex color
+}
+
+const GROUP_COLORS = [
+  { name: 'Bleu',   hex: '#3B82F6' },
+  { name: 'Vert',   hex: '#22C55E' },
+  { name: 'Violet', hex: '#8B5CF6' },
+  { name: 'Orange', hex: '#F97316' },
+  { name: 'Rose',   hex: '#EC4899' },
+  { name: 'Jaune',  hex: '#EAB308' },
+  { name: 'Rouge',  hex: '#EF4444' },
+  { name: 'Cyan',   hex: '#06B6D4' },
+];
+
 function getStatusColor(columnKey: ColumnKey | null): { bg: string; border: string } {
   const colorMap: Record<ColumnKey, { bg: string; border: string }> = {
     backlogToPrepare: { bg: 'bg-gray-50',    border: 'border-gray-300' },
@@ -82,6 +103,15 @@ const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
               Points: lier / Clic: changer statut / Clic droit flèche: supprimer
             }
           </span>
+          <button
+            class="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md"
+            (click)="addGroup()"
+            title="Ajouter un groupe"
+          >
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
           <button
             class="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md"
             (click)="autoLayout()"
@@ -143,6 +173,61 @@ const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
                 class="absolute origin-top-left"
                 [style.transform]="'translate(' + panX() + 'px, ' + panY() + 'px) scale(' + zoom() + ')'"
               >
+                <!-- Group rectangles -->
+                @for (group of groups(); track group.id) {
+                  <div
+                    class="absolute rounded-xl border-2 select-none"
+                    [style.left.px]="group.x"
+                    [style.top.px]="group.y"
+                    [style.width.px]="group.w"
+                    [style.height.px]="group.h"
+                    [style.background-color]="group.color + '18'"
+                    [style.border-color]="group.color + '60'"
+                    [style.z-index]="1"
+                    (mousedown)="onGroupMouseDown($event, group)"
+                  >
+                    <!-- Label -->
+                    <div class="absolute -top-7 left-2 flex items-center gap-2">
+                      <input
+                        class="text-sm font-semibold bg-transparent outline-none border-b border-transparent focus:border-gray-400 max-w-48"
+                        [style.color]="group.color"
+                        [value]="group.label"
+                        (input)="onGroupLabelChange(group, $event)"
+                        (mousedown)="$event.stopPropagation()"
+                      />
+                    </div>
+
+                    <!-- Color picker & delete (top-right) -->
+                    <div class="absolute -top-7 right-0 flex items-center gap-1 opacity-0 hover:opacity-100 transition-opacity" style="pointer-events: auto;" (mousedown)="$event.stopPropagation()">
+                      @for (c of groupColors; track c.hex) {
+                        <button
+                          class="w-4 h-4 rounded-full border border-white shadow-sm"
+                          [style.background-color]="c.hex"
+                          [title]="c.name"
+                          (click)="setGroupColor(group, c.hex)"
+                        ></button>
+                      }
+                      <button
+                        class="w-4 h-4 rounded-full bg-white border border-gray-300 text-gray-500 flex items-center justify-center text-xs leading-none shadow-sm"
+                        title="Supprimer le groupe"
+                        (click)="removeGroup(group.id)"
+                      >&times;</button>
+                    </div>
+
+                    <!-- Resize handle (bottom-right) -->
+                    <div
+                      class="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize"
+                      (mousedown)="onGroupResizeMouseDown($event, group)"
+                    >
+                      <svg class="w-4 h-4 text-gray-400" viewBox="0 0 16 16" fill="currentColor">
+                        <circle cx="12" cy="12" r="1.5"/>
+                        <circle cx="8" cy="12" r="1.5"/>
+                        <circle cx="12" cy="8" r="1.5"/>
+                      </svg>
+                    </div>
+                  </div>
+                }
+
                 <!-- SVG edges -->
                 <svg class="absolute top-0 left-0 pointer-events-none" [attr.width]="svgSize()" [attr.height]="svgSize()" style="overflow: visible">
                   <defs>
@@ -317,9 +402,11 @@ export class GraphComponent implements AfterViewInit {
   readonly statusPicker = signal<{ x: number; y: number; node: GraphNode } | null>(null);
   readonly selectedNodeIds = signal<Set<string>>(new Set());
   readonly selectionRect = signal<{ x: number; y: number; w: number; h: number } | null>(null);
+  readonly groups = signal<GraphGroup[]>([]);
 
   readonly legendItems = LEGEND_ITEMS;
   readonly columnDefinitions = COLUMN_DEFINITIONS;
+  readonly groupColors = GROUP_COLORS;
 
   private isSelecting = false;
   private selStartX = 0;
@@ -329,6 +416,15 @@ export class GraphComponent implements AfterViewInit {
   private dragOffsetY = 0;
   private dragMoved = false;
   private dragSelectedOffsets: Map<string, { dx: number; dy: number }> = new Map();
+
+  private draggingGroup: GraphGroup | null = null;
+  private groupDragOffsetX = 0;
+  private groupDragOffsetY = 0;
+  private resizingGroup: GraphGroup | null = null;
+  private resizeStartW = 0;
+  private resizeStartH = 0;
+  private resizeStartMouseX = 0;
+  private resizeStartMouseY = 0;
 
   static readonly NODE_WIDTH = 240;
   static readonly NODE_HEIGHT = 120;
@@ -581,9 +677,19 @@ export class GraphComponent implements AfterViewInit {
       }
     }
     this.edges.set(edges);
-    const nodes = this.computeLayout(tickets, edges);
+    let nodes = this.computeLayout(tickets, edges);
+
+    // Try to restore saved positions; only center if no saved layout
+    const savedRaw = localStorage.getItem(this.layoutKey);
+    if (savedRaw) {
+      nodes = this.restoreLayout(nodes);
+    } else {
+      this.groups.set([]);
+    }
     this.nodes.set(nodes);
-    this.centerView(nodes);
+    if (!savedRaw) {
+      this.centerView(nodes);
+    }
   }
 
   /**
@@ -726,6 +832,7 @@ export class GraphComponent implements AfterViewInit {
     if (tickets.length === 0) return;
     this.nodes.set(this.computeLayout(tickets, this.edges()));
     this.centerView(this.nodes());
+    this.saveLayout();
   }
 
   private computeEdgePath(from: GraphNode, to: GraphNode): string {
@@ -788,6 +895,24 @@ export class GraphComponent implements AfterViewInit {
     if (this.linkSource()) {
       const rect = this.canvasRef.nativeElement.getBoundingClientRect();
       this.mousePos.set({ x: event.clientX - rect.left, y: event.clientY - rect.top });
+    }
+
+    if (this.resizingGroup) {
+      const z = this.zoom();
+      const dx = (event.clientX - this.resizeStartMouseX) / z;
+      const dy = (event.clientY - this.resizeStartMouseY) / z;
+      const gId = this.resizingGroup.id;
+      this.groups.update(gs => gs.map(g => g.id === gId ? { ...g, w: Math.max(100, this.resizeStartW + dx), h: Math.max(60, this.resizeStartH + dy) } : g));
+      return;
+    }
+
+    if (this.draggingGroup) {
+      const z = this.zoom();
+      const gId = this.draggingGroup.id;
+      const newX = (event.clientX - this.panX()) / z - this.groupDragOffsetX;
+      const newY = (event.clientY - this.panY()) / z - this.groupDragOffsetY;
+      this.groups.update(gs => gs.map(g => g.id === gId ? { ...g, x: newX, y: newY } : g));
+      return;
     }
 
     if (this.draggingNode) {
@@ -855,6 +980,12 @@ export class GraphComponent implements AfterViewInit {
       this.nodes.update(nodes => nodes.map(n => n.ticket.notionId === this.draggingNode!.ticket.notionId ? { ...n, dragging: false } : n));
       this.draggingNode = null;
       this.dragSelectedOffsets.clear();
+      this.saveLayout();
+    }
+    if (this.draggingGroup || this.resizingGroup) {
+      this.draggingGroup = null;
+      this.resizingGroup = null;
+      this.saveLayout();
     }
     this.isSelecting = false;
     this.selectionRect.set(null);
@@ -887,5 +1018,105 @@ export class GraphComponent implements AfterViewInit {
       this.selectedNodeIds.set(new Set());
       this.dragSelectedOffsets.clear();
     }
+  }
+
+  // --- Groups ---
+
+  addGroup(): void {
+    const z = this.zoom();
+    const canvas = this.canvasRef?.nativeElement;
+    const cx = canvas ? canvas.clientWidth / 2 : 400;
+    const cy = canvas ? canvas.clientHeight / 2 : 300;
+    const graphX = (cx - this.panX()) / z;
+    const graphY = (cy - this.panY()) / z;
+
+    const group: GraphGroup = {
+      id: crypto.randomUUID(),
+      label: 'Nouveau groupe',
+      x: graphX - 200,
+      y: graphY - 100,
+      w: 400,
+      h: 250,
+      color: GROUP_COLORS[this.groups().length % GROUP_COLORS.length].hex,
+    };
+    this.groups.update(gs => [...gs, group]);
+    this.saveLayout();
+  }
+
+  removeGroup(id: string): void {
+    this.groups.update(gs => gs.filter(g => g.id !== id));
+    this.saveLayout();
+  }
+
+  setGroupColor(group: GraphGroup, hex: string): void {
+    this.groups.update(gs => gs.map(g => g.id === group.id ? { ...g, color: hex } : g));
+    this.saveLayout();
+  }
+
+  onGroupLabelChange(group: GraphGroup, event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    this.groups.update(gs => gs.map(g => g.id === group.id ? { ...g, label: value } : g));
+    this.saveLayout();
+  }
+
+  onGroupMouseDown(event: MouseEvent, group: GraphGroup): void {
+    event.stopPropagation();
+    const z = this.zoom();
+    this.draggingGroup = group;
+    this.groupDragOffsetX = (event.clientX - this.panX()) / z - group.x;
+    this.groupDragOffsetY = (event.clientY - this.panY()) / z - group.y;
+  }
+
+  onGroupResizeMouseDown(event: MouseEvent, group: GraphGroup): void {
+    event.stopPropagation();
+    this.resizingGroup = group;
+    this.resizeStartW = group.w;
+    this.resizeStartH = group.h;
+    this.resizeStartMouseX = event.clientX;
+    this.resizeStartMouseY = event.clientY;
+  }
+
+  // --- Persistence (localStorage) ---
+
+  private get layoutKey(): string {
+    const team = this.teamConfigService.selectedTeam();
+    const epic = this.teamConfigService.selectedEpic();
+    return `graph_layout_${team?.id}_${epic?.id}`;
+  }
+
+  saveLayout(): void {
+    const positions: Record<string, { x: number; y: number }> = {};
+    for (const n of this.nodes()) {
+      positions[n.ticket.notionId] = { x: n.x, y: n.y };
+    }
+    const data = {
+      positions,
+      groups: this.groups(),
+      zoom: this.zoom(),
+      panX: this.panX(),
+      panY: this.panY(),
+    };
+    try { localStorage.setItem(this.layoutKey, JSON.stringify(data)); } catch {}
+  }
+
+  private restoreLayout(nodes: GraphNode[]): GraphNode[] {
+    try {
+      const raw = localStorage.getItem(this.layoutKey);
+      if (!raw) return nodes;
+      const data = JSON.parse(raw);
+
+      if (data.groups) this.groups.set(data.groups);
+      if (data.zoom) this.zoom.set(data.zoom);
+      if (data.panX !== undefined) this.panX.set(data.panX);
+      if (data.panY !== undefined) this.panY.set(data.panY);
+
+      if (data.positions) {
+        return nodes.map(n => {
+          const pos = data.positions[n.ticket.notionId];
+          return pos ? { ...n, x: pos.x, y: pos.y } : n;
+        });
+      }
+    } catch {}
+    return nodes;
   }
 }
