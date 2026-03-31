@@ -131,7 +131,7 @@ const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
               #canvas
               class="absolute inset-0 overflow-hidden bg-gray-50"
               [class.cursor-crosshair]="!!linkSource()"
-              [class.cursor-grab]="!linkSource() && !draggingNode"
+              [class.cursor-default]="!linkSource()"
               style="background-image: radial-gradient(circle, #d1d5db 1px, transparent 1px); background-size: 24px 24px;"
               (mousedown)="onCanvasMouseDown($event)"
               (mousemove)="onCanvasMouseMove($event)"
@@ -174,6 +174,8 @@ const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
                     [style.top.px]="node.y"
                     [style.z-index]="node.dragging ? 50 : 10"
                     (mousedown)="onNodeMouseDown($event, node)"
+                    [class.ring-2]="selectedNodeIds().has(node.ticket.notionId) && !node.dragging"
+                    [class.ring-blue-400]="selectedNodeIds().has(node.ticket.notionId) && !node.dragging"
                   >
                     <!-- Connection dot: top -->
                     <div
@@ -232,6 +234,15 @@ const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
                 }
               </div>
 
+              @if (selectionRect()) {
+                <div
+                  class="absolute border-2 border-blue-400 bg-blue-100/20 pointer-events-none"
+                  [style.left.px]="selectionRect()!.x"
+                  [style.top.px]="selectionRect()!.y"
+                  [style.width.px]="selectionRect()!.w"
+                  [style.height.px]="selectionRect()!.h"
+                ></div>
+              }
 </div>
 
             <!-- Status picker popover (outside canvas to avoid event conflicts) -->
@@ -304,17 +315,20 @@ export class GraphComponent implements AfterViewInit {
   readonly mousePos = signal<{ x: number; y: number } | null>(null);
   readonly contextMenu = signal<{ x: number; y: number; edge: GraphEdge } | null>(null);
   readonly statusPicker = signal<{ x: number; y: number; node: GraphNode } | null>(null);
+  readonly selectedNodeIds = signal<Set<string>>(new Set());
+  readonly selectionRect = signal<{ x: number; y: number; w: number; h: number } | null>(null);
 
   readonly legendItems = LEGEND_ITEMS;
   readonly columnDefinitions = COLUMN_DEFINITIONS;
 
-  private isPanning = false;
-  private panStartX = 0;
-  private panStartY = 0;
+  private isSelecting = false;
+  private selStartX = 0;
+  private selStartY = 0;
   draggingNode: GraphNode | null = null;
   private dragOffsetX = 0;
   private dragOffsetY = 0;
   private dragMoved = false;
+  private dragSelectedOffsets: Map<string, { dx: number; dy: number }> = new Map();
 
   static readonly NODE_WIDTH = 240;
   static readonly NODE_HEIGHT = 120;
@@ -725,27 +739,49 @@ export class GraphComponent implements AfterViewInit {
   }
 
   // --- Pan & Zoom ---
+  // Trackpad: two-finger scroll = pan, pinch (ctrlKey) = zoom
+  // Mouse wheel: Ctrl+wheel = zoom, plain wheel = pan vertically
 
   onWheel(event: WheelEvent): void {
     event.preventDefault();
-    const delta = event.deltaY > 0 ? 0.9 : 1.1;
-    const newZoom = Math.max(0.1, Math.min(3, this.zoom() * delta));
-    const rect = this.canvasRef.nativeElement.getBoundingClientRect();
-    const mouseX = event.clientX - rect.left;
-    const mouseY = event.clientY - rect.top;
-    const scale = newZoom / this.zoom();
-    this.panX.set(mouseX - scale * (mouseX - this.panX()));
-    this.panY.set(mouseY - scale * (mouseY - this.panY()));
-    this.zoom.set(newZoom);
+
+    if (event.ctrlKey || event.metaKey) {
+      // Pinch-to-zoom or Ctrl+wheel → zoom (slow factor)
+      const factor = 1 - event.deltaY * 0.003;
+      const newZoom = Math.max(0.1, Math.min(3, this.zoom() * factor));
+      const rect = this.canvasRef.nativeElement.getBoundingClientRect();
+      const mouseX = event.clientX - rect.left;
+      const mouseY = event.clientY - rect.top;
+      const scale = newZoom / this.zoom();
+      this.panX.set(mouseX - scale * (mouseX - this.panX()));
+      this.panY.set(mouseY - scale * (mouseY - this.panY()));
+      this.zoom.set(newZoom);
+    } else {
+      // Two-finger scroll / trackpad → pan
+      this.panX.update(v => v - event.deltaX);
+      this.panY.update(v => v - event.deltaY);
+    }
   }
 
   onCanvasMouseDown(event: MouseEvent): void {
     this.statusPicker.set(null);
     if (this.linkSource()) { this.cancelLink(); return; }
     if (this.draggingNode) return;
-    this.isPanning = true;
-    this.panStartX = event.clientX - this.panX();
-    this.panStartY = event.clientY - this.panY();
+
+    // Middle mouse button → no action (browser default)
+    if (event.button === 1) return;
+
+    // Left click on canvas → start selection rectangle
+    const rect = this.canvasRef.nativeElement.getBoundingClientRect();
+    this.isSelecting = true;
+    this.selStartX = event.clientX - rect.left;
+    this.selStartY = event.clientY - rect.top;
+    this.selectionRect.set(null);
+
+    // Clear selection unless Shift is held
+    if (!event.shiftKey) {
+      this.selectedNodeIds.set(new Set());
+    }
   }
 
   onCanvasMouseMove(event: MouseEvent): void {
@@ -753,18 +789,64 @@ export class GraphComponent implements AfterViewInit {
       const rect = this.canvasRef.nativeElement.getBoundingClientRect();
       this.mousePos.set({ x: event.clientX - rect.left, y: event.clientY - rect.top });
     }
+
     if (this.draggingNode) {
       this.dragMoved = true;
       const z = this.zoom();
-      this.nodes.update(nodes =>
-        nodes.map(n => n.ticket.notionId === this.draggingNode!.ticket.notionId
-          ? { ...n, x: (event.clientX - this.panX()) / z - this.dragOffsetX, y: (event.clientY - this.panY()) / z - this.dragOffsetY }
-          : n
-        )
-      );
-    } else if (this.isPanning) {
-      this.panX.set(event.clientX - this.panStartX);
-      this.panY.set(event.clientY - this.panStartY);
+      const nodeId = this.draggingNode.ticket.notionId;
+      const newX = (event.clientX - this.panX()) / z - this.dragOffsetX;
+      const newY = (event.clientY - this.panY()) / z - this.dragOffsetY;
+
+      // Move all selected nodes together
+      if (this.selectedNodeIds().has(nodeId) && this.dragSelectedOffsets.size > 0) {
+        this.nodes.update(nodes =>
+          nodes.map(n => {
+            const offset = this.dragSelectedOffsets.get(n.ticket.notionId);
+            if (offset) {
+              return { ...n, x: newX + offset.dx, y: newY + offset.dy };
+            }
+            return n;
+          })
+        );
+      } else {
+        this.nodes.update(nodes =>
+          nodes.map(n => n.ticket.notionId === nodeId
+            ? { ...n, x: newX, y: newY }
+            : n
+          )
+        );
+      }
+    } else if (this.isSelecting) {
+      const rect = this.canvasRef.nativeElement.getBoundingClientRect();
+      const curX = event.clientX - rect.left;
+      const curY = event.clientY - rect.top;
+      const x = Math.min(this.selStartX, curX);
+      const y = Math.min(this.selStartY, curY);
+      const w = Math.abs(curX - this.selStartX);
+      const h = Math.abs(curY - this.selStartY);
+      this.selectionRect.set({ x, y, w, h });
+
+      // Find nodes inside selection rectangle (convert screen coords → graph coords)
+      if (w > 5 || h > 5) {
+        const z = this.zoom();
+        const graphX1 = (x - this.panX()) / z;
+        const graphY1 = (y - this.panY()) / z;
+        const graphX2 = (x + w - this.panX()) / z;
+        const graphY2 = (y + h - this.panY()) / z;
+
+        const selected = new Set<string>();
+        for (const node of this.nodes()) {
+          const nx = node.x;
+          const ny = node.y;
+          const nw = GraphComponent.NODE_WIDTH;
+          const nh = GraphComponent.NODE_HEIGHT;
+          // Node intersects selection rect
+          if (nx + nw > graphX1 && nx < graphX2 && ny + nh > graphY1 && ny < graphY2) {
+            selected.add(node.ticket.notionId);
+          }
+        }
+        this.selectedNodeIds.set(selected);
+      }
     }
   }
 
@@ -772,8 +854,10 @@ export class GraphComponent implements AfterViewInit {
     if (this.draggingNode) {
       this.nodes.update(nodes => nodes.map(n => n.ticket.notionId === this.draggingNode!.ticket.notionId ? { ...n, dragging: false } : n));
       this.draggingNode = null;
+      this.dragSelectedOffsets.clear();
     }
-    this.isPanning = false;
+    this.isSelecting = false;
+    this.selectionRect.set(null);
   }
 
   onNodeMouseDown(event: MouseEvent, node: GraphNode): void {
@@ -786,5 +870,22 @@ export class GraphComponent implements AfterViewInit {
     this.dragOffsetY = (event.clientY - this.panY()) / z - node.y;
     this.draggingNode = node;
     this.nodes.update(nodes => nodes.map(n => n.ticket.notionId === node.ticket.notionId ? { ...n, dragging: true } : n));
+
+    // If this node is in the selection, compute offsets for all selected nodes
+    if (this.selectedNodeIds().has(node.ticket.notionId)) {
+      this.dragSelectedOffsets.clear();
+      for (const n of this.nodes()) {
+        if (this.selectedNodeIds().has(n.ticket.notionId)) {
+          this.dragSelectedOffsets.set(n.ticket.notionId, {
+            dx: n.x - node.x,
+            dy: n.y - node.y,
+          });
+        }
+      }
+    } else {
+      // Clicking a non-selected node clears selection
+      this.selectedNodeIds.set(new Set());
+      this.dragSelectedOffsets.clear();
+    }
   }
 }
