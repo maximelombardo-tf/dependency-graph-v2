@@ -23,7 +23,7 @@ import { AuthService } from '../../core/services/auth.service';
         }
 
         <p class="text-xs text-center text-gray-400">
-          Accès réservé au domaine &#64;theodo.com
+          Accès réservé aux domaines &#64;theodo.com et &#64;ext.theodo.com
         </p>
       </div>
     </div>
