@@ -161,7 +161,12 @@ const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
                   <div class="text-xs font-semibold text-gray-500 mb-2">Epic</div>
                   <div class="flex flex-col gap-1.5">
                     @for (epic of teamConfigService.selectedEpics(); track epic.id) {
-                      <div class="flex items-center gap-2">
+                      <div
+                        class="flex items-center gap-2 cursor-pointer rounded px-1 -mx-1 transition-colors"
+                        [class.bg-gray-200]="highlightedEpicId() === epic.id"
+                        [title]="epic.title"
+                        (click)="toggleEpicHighlight(epic.id); $event.stopPropagation()"
+                      >
                         <div class="w-2.5 h-2.5 rounded-sm shrink-0" [style.background-color]="teamConfigService.epicColorMap().get(epic.id)"></div>
                         <span class="text-xs text-gray-600 whitespace-nowrap max-w-[150px] truncate">{{ epic.title }}</span>
                       </div>
@@ -269,10 +274,11 @@ const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
                 <!-- Ticket nodes -->
                 @for (node of nodes(); track node.ticket.notionId) {
                   <div
-                    class="absolute select-none group"
+                    class="absolute select-none group transition-opacity"
                     [style.left.px]="node.x"
                     [style.top.px]="node.y"
                     [style.z-index]="node.dragging ? 50 : 10"
+                    [style.opacity]="isNodeDimmed(node.ticket) ? 0.2 : 1"
                     (mousedown)="onNodeMouseDown($event, node)"
                     [class.ring-2]="selectedNodeIds().has(node.ticket.notionId) && !node.dragging"
                     [class.ring-blue-400]="selectedNodeIds().has(node.ticket.notionId) && !node.dragging"
@@ -434,6 +440,7 @@ export class GraphComponent implements AfterViewInit {
   readonly selectedNodeIds = signal<Set<string>>(new Set());
   readonly selectionRect = signal<{ x: number; y: number; w: number; h: number } | null>(null);
   readonly groups = signal<GraphGroup[]>([]);
+  readonly highlightedEpicId = signal<string | null>(null);
 
   readonly legendItems = LEGEND_ITEMS;
   readonly columnDefinitions = COLUMN_DEFINITIONS;
@@ -515,6 +522,16 @@ export class GraphComponent implements AfterViewInit {
   onDocumentClick(): void {
     this.contextMenu.set(null);
     this.statusPicker.set(null);
+  }
+
+  toggleEpicHighlight(epicId: string): void {
+    this.highlightedEpicId.update(current => current === epicId ? null : epicId);
+  }
+
+  isNodeDimmed(ticket: Ticket): boolean {
+    const hl = this.highlightedEpicId();
+    if (!hl) return false;
+    return !ticket.epicIds.includes(hl);
   }
 
   getNavLink(target: string): string {

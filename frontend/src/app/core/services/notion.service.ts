@@ -290,7 +290,7 @@ export class NotionService {
     if (type === 'select' && prop.select) return prop.select.name || '';
     if (type === 'status' && prop.status) return prop.status.name || '';
     if (type === 'multi_select' && prop.multi_select) return prop.multi_select.map((s: any) => s.name).join(', ');
-    if (type === 'checkbox') return prop.checkbox ? 'Oui' : 'Non';
+    if (type === 'checkbox') return prop.checkbox === true ? 'Oui' : 'Non';
     if (type === 'date' && prop.date?.start) return prop.date.start;
     if (type === 'people') return (prop.people || []).map((p: any) => p.name).filter(Boolean).join(', ');
     if (type === 'formula') {
@@ -308,6 +308,10 @@ export class NotionService {
     if (type === 'url' && prop.url) return prop.url;
     if (type === 'email' && prop.email) return prop.email;
     if (type === 'phone_number' && prop.phone_number) return prop.phone_number;
+    if (type === 'created_time' && prop.created_time) return prop.created_time.split('T')[0];
+    if (type === 'last_edited_time' && prop.last_edited_time) return prop.last_edited_time.split('T')[0];
+    if (type === 'files' && prop.files?.length > 0) return prop.files.map((f: any) => f.name || f.external?.url || f.file?.url || '').filter(Boolean).join(', ');
+    if (type === 'relation' && prop.relation?.length > 0) return `${prop.relation.length} lien(s)`;
     return '';
   }
 
