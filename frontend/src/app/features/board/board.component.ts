@@ -3,6 +3,7 @@ import {
   inject,
   signal,
   effect,
+  untracked,
   computed,
   ViewChild,
   ElementRef,
@@ -161,7 +162,7 @@ export class BoardComponent implements AfterViewInit {
       const team = this.teamConfigService.selectedTeam();
       const epics = this.teamConfigService.selectedEpics();
       if (team && epics.length > 0) {
-        this.fetchTickets();
+        untracked(() => this.fetchTickets());
       }
     });
   }

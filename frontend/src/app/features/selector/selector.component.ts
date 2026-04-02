@@ -1,4 +1,4 @@
-import { Component, inject, signal, effect, HostListener } from '@angular/core';
+import { Component, inject, signal, effect, untracked, HostListener } from '@angular/core';
 import { forkJoin, of } from 'rxjs';
 import { TeamConfigService } from '../../core/services/team-config.service';
 import { NotionService } from '../../core/services/notion.service';
@@ -165,7 +165,7 @@ export class SelectorComponent {
     effect(() => {
       const team = this.teamConfigService.selectedTeam();
       if (team) {
-        this.fetchEpics(team);
+        untracked(() => this.fetchEpics(team));
       }
     });
   }

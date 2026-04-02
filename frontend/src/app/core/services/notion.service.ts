@@ -114,7 +114,7 @@ export class NotionService {
     }
 
     const filter = this.buildEpicFilter(teamConfig.ticketFilter);
-    return this.queryDatabase(teamConfig.usDatabaseId, filter).pipe(
+    return this.querySinglePage(teamConfig.usDatabaseId, filter).pipe(
       map(pages => {
         const epicIds = new Set<string>();
         for (const page of pages) {

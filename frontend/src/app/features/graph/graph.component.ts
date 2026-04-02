@@ -4,6 +4,7 @@ import {
   signal,
   computed,
   effect,
+  untracked,
   ElementRef,
   ViewChild,
   AfterViewInit,
@@ -497,7 +498,7 @@ export class GraphComponent implements AfterViewInit {
     effect(() => {
       const team = this.teamConfigService.selectedTeam();
       const epics = this.teamConfigService.selectedEpics();
-      if (team && epics.length > 0) this.fetchTickets();
+      if (team && epics.length > 0) untracked(() => this.fetchTickets());
     });
   }
 
