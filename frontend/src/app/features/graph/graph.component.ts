@@ -93,7 +93,7 @@ const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
           <h1 class="text-lg font-semibold text-gray-800">Dependency Graph</h1>
           <nav class="flex gap-1 bg-gray-100 rounded-lg p-0.5">
             <span class="px-3 py-1 text-sm rounded-md bg-white shadow-sm font-medium text-gray-900">Graph</span>
-            <a routerLink="/board" class="px-3 py-1 text-sm rounded-md text-gray-600 hover:bg-white transition-colors">Kanban</a>
+            <a [routerLink]="getNavLink('board')" class="px-3 py-1 text-sm rounded-md text-gray-600 hover:bg-white transition-colors">Kanban</a>
           </nav>
         </div>
         <div class="flex items-center gap-3">
@@ -515,6 +515,15 @@ export class GraphComponent implements AfterViewInit {
   onDocumentClick(): void {
     this.contextMenu.set(null);
     this.statusPicker.set(null);
+  }
+
+  getNavLink(target: string): string {
+    const team = this.teamConfigService.selectedTeam();
+    if (team) {
+      const slug = team.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '');
+      return `/${target}/${slug}`;
+    }
+    return `/${target}`;
   }
 
   getEpicColor(ticket: Ticket): string | null {

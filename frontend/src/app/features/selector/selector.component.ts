@@ -1,4 +1,5 @@
 import { Component, inject, signal, effect, untracked, HostListener } from '@angular/core';
+import { Router, ActivatedRoute } from '@angular/router';
 import { forkJoin, of } from 'rxjs';
 import { TeamConfigService } from '../../core/services/team-config.service';
 import { NotionService } from '../../core/services/notion.service';
@@ -149,6 +150,8 @@ import { Epic } from '../../core/models/ticket.model';
 export class SelectorComponent {
   readonly teamConfigService = inject(TeamConfigService);
   private readonly notionService = inject(NotionService);
+  private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
 
   readonly epics = signal<Epic[]>([]);
   readonly loadingEpics = signal(false);
@@ -162,6 +165,23 @@ export class SelectorComponent {
   };
 
   constructor() {
+    // Select team from URL param when teams are loaded
+    effect(() => {
+      const teams = this.teamConfigService.teams();
+      if (teams.length === 0) return;
+      untracked(() => {
+        const teamName = this.route.snapshot.paramMap.get('teamName');
+        if (teamName) {
+          const decoded = decodeURIComponent(teamName);
+          const team = teams.find(t => this.slugify(t.name) === decoded || t.name === decoded);
+          if (team && team.name !== this.teamConfigService.selectedTeam()?.name) {
+            this.teamConfigService.selectTeam(team);
+          }
+        }
+      });
+    });
+
+    // Fetch epics when team changes
     effect(() => {
       const team = this.teamConfigService.selectedTeam();
       if (team) {
@@ -200,7 +220,14 @@ export class SelectorComponent {
     const team = this.teamConfigService.teams().find(t => t.name === name);
     if (team) {
       this.teamConfigService.selectTeam(team);
+      // Navigate to URL with team slug
+      const currentPath = this.router.url.startsWith('/board') ? 'board' : 'graph';
+      this.router.navigate([`/${currentPath}`, this.slugify(team.name)]);
     }
+  }
+
+  private slugify(name: string): string {
+    return name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '');
   }
 
   onEpicToggle(epic: Epic): void {

@@ -39,7 +39,7 @@ interface ColumnData {
         <div class="flex items-center gap-4">
           <h1 class="text-lg font-semibold text-gray-800">Dependency Graph</h1>
           <nav class="flex gap-1 bg-gray-100 rounded-lg p-0.5">
-            <a routerLink="/graph" class="px-3 py-1 text-sm rounded-md text-gray-600 hover:bg-white transition-colors">Graph</a>
+            <a [routerLink]="getNavLink('graph')" class="px-3 py-1 text-sm rounded-md text-gray-600 hover:bg-white transition-colors">Graph</a>
             <span class="px-3 py-1 text-sm rounded-md bg-white shadow-sm font-medium text-gray-900">Kanban</span>
           </nav>
         </div>
@@ -156,6 +156,15 @@ export class BoardComponent implements AfterViewInit {
   });
 
   readonly columnIds = computed(() => COLUMN_DEFINITIONS.map(c => c.key));
+
+  getNavLink(target: string): string {
+    const team = this.teamConfigService.selectedTeam();
+    if (team) {
+      const slug = team.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '');
+      return `/${target}/${slug}`;
+    }
+    return `/${target}`;
+  }
 
   constructor() {
     effect(() => {
