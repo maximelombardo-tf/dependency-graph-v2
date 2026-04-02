@@ -107,6 +107,29 @@ export class NotionService {
     );
   }
 
+  /** Fetch epic IDs that have at least one ticket matching the ticketFilter. */
+  getRelevantEpicIds(teamConfig: TeamConfig): Observable<Set<string>> {
+    if (!teamConfig.ticketFilter?.length) {
+      return new Observable(sub => { sub.next(null as any); sub.complete(); });
+    }
+
+    const filter = this.buildEpicFilter(teamConfig.ticketFilter);
+    return this.queryDatabase(teamConfig.usDatabaseId, filter).pipe(
+      map(pages => {
+        const epicIds = new Set<string>();
+        for (const page of pages) {
+          const epicRel = page.properties[teamConfig.propertiesName.epic];
+          if (epicRel?.type === 'relation' && epicRel.relation) {
+            for (const r of epicRel.relation) {
+              epicIds.add(r.id);
+            }
+          }
+        }
+        return epicIds;
+      }),
+    );
+  }
+
   addDependency(
     pageId: string,
     currentDepIds: string[],
@@ -183,6 +206,7 @@ export class NotionService {
       assignees: this.extractAllPeople(props[pNames.assignedTo]),
       complexity: this.extractText(props[pNames.complexity]) || this.extractSelect(props[pNames.complexity]) || null,
       dependencyIds: this.extractRelation(props[pNames.bloque]),
+      epicIds: this.extractRelation(props[pNames.epic]),
       notionUrl: page.url,
       extraFields,
     };

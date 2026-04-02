@@ -1,4 +1,5 @@
 import { Component, inject, signal, effect, HostListener } from '@angular/core';
+import { forkJoin, of } from 'rxjs';
 import { TeamConfigService } from '../../core/services/team-config.service';
 import { NotionService } from '../../core/services/notion.service';
 import { TeamConfig } from '../../core/models/team-config.model';
@@ -216,9 +217,18 @@ export class SelectorComponent {
 
   private fetchEpics(team: TeamConfig): void {
     this.loadingEpics.set(true);
-    this.notionService.getEpicsForTeam(team).subscribe({
-      next: epics => {
-        this.epics.set(epics);
+
+    const epics$ = this.notionService.getEpicsForTeam(team);
+    const relevantIds$ = team.ticketFilter?.length
+      ? this.notionService.getRelevantEpicIds(team)
+      : of(null);
+
+    forkJoin([epics$, relevantIds$]).subscribe({
+      next: ([epics, relevantIds]) => {
+        const filtered = relevantIds
+          ? epics.filter(e => relevantIds.has(e.id))
+          : epics;
+        this.epics.set(filtered);
         this.loadingEpics.set(false);
       },
       error: err => {

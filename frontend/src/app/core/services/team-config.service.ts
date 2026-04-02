@@ -18,6 +18,20 @@ export class TeamConfigService {
 
   readonly hasSelection = computed(() => !!this.selectedTeam() && this.selectedEpics().length > 0);
 
+  private static readonly EPIC_COLORS = [
+    '#3B82F6', '#22C55E', '#F97316', '#8B5CF6', '#EC4899',
+    '#EAB308', '#06B6D4', '#EF4444', '#14B8A6', '#6366F1',
+  ];
+
+  readonly epicColorMap = computed(() => {
+    const map = new Map<string, string>();
+    const epics = this.selectedEpics();
+    epics.forEach((epic, i) => {
+      map.set(epic.id, TeamConfigService.EPIC_COLORS[i % TeamConfigService.EPIC_COLORS.length]);
+    });
+    return map;
+  });
+
   constructor() {
     this.loadTeamsFromApi();
   }

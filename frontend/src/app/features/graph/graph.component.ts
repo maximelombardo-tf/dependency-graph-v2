@@ -154,6 +154,20 @@ const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
                   </div>
                 }
               </div>
+
+              @if (teamConfigService.selectedEpics().length > 1) {
+                <div class="border-t border-gray-200 mt-2.5 pt-2.5">
+                  <div class="text-xs font-semibold text-gray-500 mb-2">Epic</div>
+                  <div class="flex flex-col gap-1.5">
+                    @for (epic of teamConfigService.selectedEpics(); track epic.id) {
+                      <div class="flex items-center gap-2">
+                        <div class="w-2.5 h-2.5 rounded-sm shrink-0" [style.background-color]="teamConfigService.epicColorMap().get(epic.id)"></div>
+                        <span class="text-xs text-gray-600 whitespace-nowrap max-w-[150px] truncate">{{ epic.title }}</span>
+                      </div>
+                    }
+                  </div>
+                </div>
+              }
             </div>
 
             <!-- Canvas -->
@@ -289,6 +303,13 @@ const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
                       [class.ring-blue-200]="node.dragging"
                       (click)="onNodeClick($event, node)"
                     >
+                      @if (teamConfigService.selectedEpics().length > 1 && getEpicColor(node.ticket)) {
+                        <div class="flex items-center gap-1.5 mb-1.5">
+                          <div class="w-2 h-2 rounded-sm shrink-0" [style.background-color]="getEpicColor(node.ticket)"></div>
+                          <span class="text-[10px] text-gray-400 truncate">{{ getEpicName(node.ticket) }}</span>
+                        </div>
+                      }
+
                       <span class="text-sm font-medium text-gray-900 line-clamp-2 block">
                         {{ node.ticket.title }}
                       </span>
@@ -493,6 +514,24 @@ export class GraphComponent implements AfterViewInit {
   onDocumentClick(): void {
     this.contextMenu.set(null);
     this.statusPicker.set(null);
+  }
+
+  getEpicColor(ticket: Ticket): string | null {
+    const colorMap = this.teamConfigService.epicColorMap();
+    for (const epicId of ticket.epicIds) {
+      const color = colorMap.get(epicId);
+      if (color) return color;
+    }
+    return null;
+  }
+
+  getEpicName(ticket: Ticket): string {
+    const epics = this.teamConfigService.selectedEpics();
+    for (const epicId of ticket.epicIds) {
+      const epic = epics.find(e => e.id === epicId);
+      if (epic) return epic.title;
+    }
+    return '';
   }
 
   getNodeColorClasses(node: GraphNode): string {

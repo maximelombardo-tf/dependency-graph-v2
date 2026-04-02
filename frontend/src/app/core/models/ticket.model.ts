@@ -12,6 +12,7 @@ export interface Ticket {
   assignees: Assignee[];
   complexity: string | null;
   dependencyIds: string[];
+  epicIds: string[];
   notionUrl: string;
   extraFields: Record<string, string>;
 }

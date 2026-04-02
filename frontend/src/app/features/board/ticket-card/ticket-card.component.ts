@@ -14,6 +14,13 @@ import { TeamConfigService } from '../../../core/services/team-config.service';
       class="group relative bg-white rounded-lg border border-gray-200 p-3 shadow-sm hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing"
       (click)="onCardClick($event)"
     >
+      @if (teamConfigService.selectedEpics().length > 1 && getEpicColor()) {
+        <div class="flex items-center gap-1.5 mb-1.5">
+          <div class="w-2 h-2 rounded-sm shrink-0" [style.background-color]="getEpicColor()"></div>
+          <span class="text-[10px] text-gray-400 truncate">{{ getEpicName() }}</span>
+        </div>
+      }
+
       <div class="flex items-start justify-between gap-2">
         <div class="flex-1 min-w-0">
           <a
@@ -71,6 +78,24 @@ export class TicketCardComponent {
 
   readonly linkStart = output<{ ticketId: string; side: 'left' | 'right' }>();
   readonly linkEnd = output<{ ticketId: string }>();
+
+  getEpicColor(): string | null {
+    const colorMap = this.teamConfigService.epicColorMap();
+    for (const epicId of this.ticket().epicIds) {
+      const color = colorMap.get(epicId);
+      if (color) return color;
+    }
+    return null;
+  }
+
+  getEpicName(): string {
+    const epics = this.teamConfigService.selectedEpics();
+    for (const epicId of this.ticket().epicIds) {
+      const epic = epics.find(e => e.id === epicId);
+      if (epic) return epic.title;
+    }
+    return '';
+  }
 
   onCardClick(event: MouseEvent): void {
     if (this.isLinkMode()) {
