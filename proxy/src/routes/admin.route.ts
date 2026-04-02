@@ -18,6 +18,7 @@ interface StoredTeam {
   usDatabaseId: string;
   propertiesName: Record<string, unknown>;
   epicFilter?: unknown[];
+  ticketFilter?: unknown[];
   notionApiToken?: string;
 }
 
@@ -92,13 +93,13 @@ router.get('/teams', (_req: Request, res: Response) => {
 router.post('/teams', (req: Request, res: Response) => {
   if (!requireAdmin(req)) { res.status(401).json({ error: 'Unauthorized' }); return; }
 
-  const { notionApiToken, name, epicDatabaseId, usDatabaseId, propertiesName, epicFilter } = req.body ?? {};
+  const { notionApiToken, name, epicDatabaseId, usDatabaseId, propertiesName, epicFilter, ticketFilter } = req.body ?? {};
   if (!notionApiToken || !name || !epicDatabaseId || !usDatabaseId || !propertiesName) {
     res.status(400).json({ error: 'Missing required fields' });
     return;
   }
 
-  const team: StoredTeam = { id: randomUUID(), name, epicDatabaseId, usDatabaseId, propertiesName, epicFilter, notionApiToken };
+  const team: StoredTeam = { id: randomUUID(), name, epicDatabaseId, usDatabaseId, propertiesName, epicFilter, ticketFilter, notionApiToken };
   const teams = readTeams();
   teams.push(team);
   writeTeams(teams);
@@ -110,7 +111,7 @@ router.post('/teams', (req: Request, res: Response) => {
 router.put('/teams', (req: Request, res: Response) => {
   if (!requireAdmin(req)) { res.status(401).json({ error: 'Unauthorized' }); return; }
 
-  const { id, notionApiToken, name, epicDatabaseId, usDatabaseId, propertiesName, epicFilter } = req.body ?? {};
+  const { id, notionApiToken, name, epicDatabaseId, usDatabaseId, propertiesName, epicFilter, ticketFilter } = req.body ?? {};
   if (!id || !name || !epicDatabaseId || !usDatabaseId || !propertiesName) {
     res.status(400).json({ error: 'Missing required fields' });
     return;
@@ -122,7 +123,7 @@ router.put('/teams', (req: Request, res: Response) => {
 
   teams[idx] = {
     ...teams[idx],
-    name, epicDatabaseId, usDatabaseId, propertiesName, epicFilter,
+    name, epicDatabaseId, usDatabaseId, propertiesName, epicFilter, ticketFilter,
     notionApiToken: notionApiToken || teams[idx].notionApiToken,
   };
   writeTeams(teams);

@@ -55,13 +55,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // POST /api/admin/teams — create team
   if (req.method === 'POST') {
-    const { notionApiToken, name, epicDatabaseId, usDatabaseId, propertiesName, epicFilter } = req.body ?? {};
+    const { notionApiToken, name, epicDatabaseId, usDatabaseId, propertiesName, epicFilter, ticketFilter } = req.body ?? {};
     if (!notionApiToken || !name || !epicDatabaseId || !usDatabaseId || !propertiesName) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
     const id = randomUUID();
-    const team = { id, name, epicDatabaseId, usDatabaseId, propertiesName, epicFilter, notionApiToken };
+    const team = { id, name, epicDatabaseId, usDatabaseId, propertiesName, epicFilter, ticketFilter, notionApiToken };
 
     await redis.set(`team:${id}`, team);
     const ids: string[] = (await redis.get('teams:list')) ?? [];
@@ -74,7 +74,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // PUT /api/admin/teams — update team
   if (req.method === 'PUT') {
-    const { id, notionApiToken, name, epicDatabaseId, usDatabaseId, propertiesName, epicFilter } = req.body ?? {};
+    const { id, notionApiToken, name, epicDatabaseId, usDatabaseId, propertiesName, epicFilter, ticketFilter } = req.body ?? {};
     if (!id || !name || !epicDatabaseId || !usDatabaseId || !propertiesName) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
@@ -89,6 +89,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       usDatabaseId,
       propertiesName,
       epicFilter,
+      ticketFilter,
       notionApiToken: notionApiToken || existing['notionApiToken'],
     };
 

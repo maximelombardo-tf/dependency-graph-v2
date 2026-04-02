@@ -182,7 +182,7 @@ import { TeamConfig, PropertiesName, StatusMapping, EpicFilter, COLUMN_DEFINITIO
                 </div>
                 <button
                   type="button"
-                  (click)="removeFilter($index)"
+                  (click)="removeFilter('epic', $index)"
                   class="px-2 py-1.5 text-red-500 hover:text-red-700 text-sm"
                   title="Supprimer ce filtre"
                 >
@@ -193,7 +193,71 @@ import { TeamConfig, PropertiesName, StatusMapping, EpicFilter, COLUMN_DEFINITIO
 
             <button
               type="button"
-              (click)="addFilter()"
+              (click)="addFilter('epic')"
+              class="text-sm text-blue-600 hover:text-blue-800"
+            >
+              + Ajouter un filtre
+            </button>
+          </fieldset>
+
+          <!-- ── Section 5 : Filtres Tickets (optionnel) ── -->
+          <fieldset class="space-y-3">
+            <legend class="text-sm font-semibold text-gray-800 uppercase tracking-wide">
+              Filtres sur les tickets
+              <span class="text-xs font-normal text-gray-400 ml-1">(optionnel)</span>
+            </legend>
+            <p class="text-xs text-gray-500">
+              Permet de filtrer les tickets affichés (ex: par équipe). Plusieurs filtres sur la même propriété sont combinés en OU.
+            </p>
+
+            @for (filter of ticketFilters; track $index) {
+              <div class="flex items-end gap-2">
+                <div class="flex-1">
+                  <label class="block text-xs font-medium text-gray-600 mb-0.5">Propriété</label>
+                  <input
+                    type="text"
+                    [(ngModel)]="filter.property"
+                    [name]="'tfilter_prop_' + $index"
+                    class="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="ex: Equipe"
+                  />
+                </div>
+                <div class="w-36">
+                  <label class="block text-xs font-medium text-gray-600 mb-0.5">Type</label>
+                  <select
+                    [(ngModel)]="filter.type"
+                    [name]="'tfilter_type_' + $index"
+                    class="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="select">select</option>
+                    <option value="status">status</option>
+                    <option value="multi_select">multi_select</option>
+                  </select>
+                </div>
+                <div class="flex-1">
+                  <label class="block text-xs font-medium text-gray-600 mb-0.5">Valeur</label>
+                  <input
+                    type="text"
+                    [(ngModel)]="filter.value"
+                    [name]="'tfilter_val_' + $index"
+                    class="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="ex: Flash"
+                  />
+                </div>
+                <button
+                  type="button"
+                  (click)="removeFilter('ticket', $index)"
+                  class="px-2 py-1.5 text-red-500 hover:text-red-700 text-sm"
+                  title="Supprimer ce filtre"
+                >
+                  &times;
+                </button>
+              </div>
+            }
+
+            <button
+              type="button"
+              (click)="addFilter('ticket')"
               class="text-sm text-blue-600 hover:text-blue-800"
             >
               + Ajouter un filtre
@@ -274,6 +338,7 @@ export class AdminTeamFormComponent implements OnInit {
   };
 
   epicFilters: { property: string; type: 'select' | 'status' | 'multi_select'; value: string }[] = [];
+  ticketFilters: { property: string; type: 'select' | 'status' | 'multi_select'; value: string }[] = [];
 
   readonly loading = signal(false);
   readonly error = signal('');
@@ -305,15 +370,25 @@ export class AdminTeamFormComponent implements OnInit {
 
       // Populate epic filters
       this.epicFilters = (t.epicFilter ?? []).map(f => ({ ...f }));
+      this.ticketFilters = (t.ticketFilter ?? []).map(f => ({ ...f }));
     }
   }
 
-  addFilter(): void {
-    this.epicFilters = [...this.epicFilters, { property: '', type: 'select', value: '' }];
+  addFilter(target: 'epic' | 'ticket'): void {
+    const row = { property: '', type: 'select' as const, value: '' };
+    if (target === 'epic') {
+      this.epicFilters = [...this.epicFilters, row];
+    } else {
+      this.ticketFilters = [...this.ticketFilters, row];
+    }
   }
 
-  removeFilter(index: number): void {
-    this.epicFilters = this.epicFilters.filter((_, i) => i !== index);
+  removeFilter(target: 'epic' | 'ticket', index: number): void {
+    if (target === 'epic') {
+      this.epicFilters = this.epicFilters.filter((_, i) => i !== index);
+    } else {
+      this.ticketFilters = this.ticketFilters.filter((_, i) => i !== index);
+    }
   }
 
   save(): void {
@@ -336,8 +411,9 @@ export class AdminTeamFormComponent implements OnInit {
       blocked: parseValues(this.statusMappings['blocked']),
     };
 
-    // Build epic filter (remove empty rows)
+    // Build filters (remove empty rows)
     const epicFilter: EpicFilter = this.epicFilters.filter(f => f.property && f.value);
+    const ticketFilter: EpicFilter = this.ticketFilters.filter(f => f.property && f.value);
 
     const propertiesName: PropertiesName = {
       id: this.properties['id'],
@@ -360,6 +436,7 @@ export class AdminTeamFormComponent implements OnInit {
       usDatabaseId: this.usDatabaseId,
       propertiesName,
       epicFilter,
+      ticketFilter,
     };
 
     const request$ = t

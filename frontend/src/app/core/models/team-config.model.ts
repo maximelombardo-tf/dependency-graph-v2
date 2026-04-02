@@ -37,6 +37,7 @@ export interface TeamConfig {
   usDatabaseId: string;
   propertiesName: PropertiesName;
   epicFilter?: EpicFilter;
+  ticketFilter?: EpicFilter;
 }
 
 export const DEFAULT_PROPERTIES_CONFIG: { propertiesName: PropertiesName; epicFilter: EpicFilter } = {

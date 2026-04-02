@@ -73,26 +73,25 @@ export class NotionService {
   }
 
   getTicketsForEpic(teamConfig: TeamConfig, epicId: string): Observable<Ticket[]> {
-    const filter = {
-      property: teamConfig.propertiesName.epic,
-      relation: { contains: epicId },
-    };
-
-    return this.queryDatabase(teamConfig.usDatabaseId, filter).pipe(
-      map(pages => pages.map(page => this.mapToTicket(page, teamConfig))),
-    );
+    return this.getTicketsForEpics(teamConfig, [epicId]);
   }
 
   getTicketsForEpics(teamConfig: TeamConfig, epicIds: string[]): Observable<Ticket[]> {
     if (epicIds.length === 0) return new Observable(sub => { sub.next([]); sub.complete(); });
-    if (epicIds.length === 1) return this.getTicketsForEpic(teamConfig, epicIds[0]);
 
-    const filter = {
-      or: epicIds.map(id => ({
-        property: teamConfig.propertiesName.epic,
-        relation: { contains: id },
-      })),
-    };
+    // Epic relation filter
+    const epicFilter = epicIds.length === 1
+      ? { property: teamConfig.propertiesName.epic, relation: { contains: epicIds[0] } }
+      : { or: epicIds.map(id => ({ property: teamConfig.propertiesName.epic, relation: { contains: id } })) };
+
+    // Combine with ticketFilter if configured
+    const ticketFilterClauses = teamConfig.ticketFilter?.length
+      ? this.buildEpicFilter(teamConfig.ticketFilter)
+      : null;
+
+    const filter = ticketFilterClauses
+      ? { and: [epicFilter, ticketFilterClauses] }
+      : epicFilter;
 
     return this.queryDatabase(teamConfig.usDatabaseId, filter).pipe(
       map(pages => {
