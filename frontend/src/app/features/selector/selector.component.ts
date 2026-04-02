@@ -279,9 +279,11 @@ export class SelectorComponent {
 
     forkJoin([epics$, relevantIds$]).subscribe({
       next: ([epics, relevantIds]) => {
-        const filtered = relevantIds !== null && relevantIds.size > 0
-          ? epics.filter(e => relevantIds.has(e.id))
-          : epics;
+        let filtered = epics;
+        if (relevantIds !== null && relevantIds.size > 0) {
+          const matched = epics.filter(e => relevantIds.has(e.id));
+          if (matched.length > 0) filtered = matched;
+        }
         this.epics.set(filtered);
         this.loadingEpics.set(false);
       },
