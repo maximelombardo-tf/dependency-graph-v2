@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, expand, reduce, map, retry, timer, EMPTY } from 'rxjs';
 import { environment } from '../../../environments/environment';
-import { TeamConfig } from '../models/team-config.model';
+import { TeamConfig, EpicFilterCondition } from '../models/team-config.model';
 import { Ticket, Assignee, Epic, NotionPage, NotionQueryResponse } from '../models/ticket.model';
 
 @Injectable({ providedIn: 'root' })
@@ -46,14 +46,7 @@ export class NotionService {
 
   getEpicsForTeam(teamConfig: TeamConfig): Observable<Epic[]> {
     const filter = teamConfig.epicFilter?.length
-      ? {
-          and: teamConfig.epicFilter.map(condition => ({
-            property: condition.property,
-            [condition.type]: {
-              [condition.type === 'multi_select' ? 'contains' : 'equals']: condition.value,
-            },
-          })),
-        }
+      ? this.buildEpicFilter(teamConfig.epicFilter)
       : undefined;
 
     return this.querySinglePage(teamConfig.epicDatabaseId, filter).pipe(
@@ -139,6 +132,35 @@ export class NotionService {
     return this.updatePageProperty(pageId, {
       [propertyName]: { relation: relationIds },
     });
+  }
+
+  private buildEpicFilter(conditions: EpicFilterCondition[]): object {
+    const toNotionCondition = (c: EpicFilterCondition) => ({
+      property: c.property,
+      [c.type]: {
+        [c.type === 'multi_select' ? 'contains' : 'equals']: c.value,
+      },
+    });
+
+    // Group conditions by property name
+    const grouped = new Map<string, EpicFilterCondition[]>();
+    for (const c of conditions) {
+      const list = grouped.get(c.property) ?? [];
+      list.push(c);
+      grouped.set(c.property, list);
+    }
+
+    // For each property: single condition stays as-is, multiple conditions get OR'd
+    const clauses: object[] = [];
+    for (const group of grouped.values()) {
+      if (group.length === 1) {
+        clauses.push(toNotionCondition(group[0]));
+      } else {
+        clauses.push({ or: group.map(toNotionCondition) });
+      }
+    }
+
+    return clauses.length === 1 ? clauses[0] : { and: clauses };
   }
 
   private mapToTicket(page: NotionPage, config: TeamConfig): Ticket {
