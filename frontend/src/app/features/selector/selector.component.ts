@@ -1,5 +1,6 @@
 import { Component, inject, signal, effect, untracked, HostListener } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { forkJoin, of } from 'rxjs';
 import { TeamConfigService } from '../../core/services/team-config.service';
 import { NotionService } from '../../core/services/notion.service';
@@ -11,27 +12,37 @@ import { Epic } from '../../core/models/ticket.model';
   standalone: true,
   template: `
     <div class="flex items-center gap-4 p-4 bg-white border-b border-gray-200">
-      <div class="flex items-center gap-2">
-        <label for="team-select" class="text-sm font-medium text-gray-700">Équipe</label>
-        <select
-          id="team-select"
-          class="rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          [value]="teamConfigService.selectedTeam()?.name || ''"
-          [disabled]="teamConfigService.loadingTeams()"
-          (change)="onTeamChange($event)"
-        >
-          @if (teamConfigService.loadingTeams()) {
-            <option value="" disabled>Chargement...</option>
-          } @else if (teamConfigService.teams().length === 0) {
-            <option value="" disabled>Aucune équipe configurée</option>
-          } @else {
-            <option value="" disabled>Choisir une équipe</option>
-            @for (team of teamConfigService.teams(); track team.name) {
-              <option [value]="team.name">{{ team.name }}</option>
+      <!-- Team: locked badge or dropdown -->
+      @if (teamLockedByRoute()) {
+        <div class="flex items-center gap-2">
+          <span class="text-sm font-medium text-gray-700">Équipe</span>
+          <span class="px-3 py-1.5 text-sm font-medium text-gray-900 bg-gray-100 rounded-md">
+            {{ teamConfigService.selectedTeam()?.name }}
+          </span>
+        </div>
+      } @else {
+        <div class="flex items-center gap-2">
+          <label for="team-select" class="text-sm font-medium text-gray-700">Équipe</label>
+          <select
+            id="team-select"
+            class="rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            [value]="teamConfigService.selectedTeam()?.name || ''"
+            [disabled]="teamConfigService.loadingTeams()"
+            (change)="onTeamChange($event)"
+          >
+            @if (teamConfigService.loadingTeams()) {
+              <option value="" disabled>Chargement...</option>
+            } @else if (teamConfigService.teams().length === 0) {
+              <option value="" disabled>Aucune équipe configurée</option>
+            } @else {
+              <option value="" disabled>Choisir une équipe</option>
+              @for (team of teamConfigService.teams(); track team.name) {
+                <option [value]="team.name">{{ team.name }}</option>
+              }
             }
-          }
-        </select>
-      </div>
+          </select>
+        </div>
+      }
 
       <!-- Epic multi-select -->
       <div class="flex items-center gap-2 relative">
@@ -153,10 +164,13 @@ export class SelectorComponent {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
 
+  private readonly params = toSignal(this.route.paramMap);
+
   readonly epics = signal<Epic[]>([]);
   readonly loadingEpics = signal(false);
   readonly openDropdown = signal<'epic' | 'fields' | null>(null);
   readonly searchQuery = signal('');
+  readonly teamLockedByRoute = signal(false);
 
   readonly filteredEpics = () => {
     const query = this.searchQuery().toLowerCase();
@@ -165,17 +179,35 @@ export class SelectorComponent {
   };
 
   constructor() {
-    // Select team from URL param when teams are loaded
+    // Reactive route param → auto-select team or redirect
     effect(() => {
       const teams = this.teamConfigService.teams();
-      if (teams.length === 0) return;
+      const paramMap = this.params();
+      if (teams.length === 0 || !paramMap) return;
+
       untracked(() => {
-        const teamName = this.route.snapshot.paramMap.get('teamName');
-        if (teamName) {
-          const decoded = decodeURIComponent(teamName);
-          const team = teams.find(t => this.slugify(t.name) === decoded || t.name === decoded);
+        const teamSlug = paramMap.get('teamName');
+        if (teamSlug) {
+          this.teamLockedByRoute.set(true);
+          const decoded = decodeURIComponent(teamSlug);
+          const team = teams.find(t => TeamConfigService.slugify(t.name) === decoded || t.name === decoded);
           if (team && team.name !== this.teamConfigService.selectedTeam()?.name) {
             this.teamConfigService.selectTeam(team);
+          } else if (!team) {
+            // Unknown team slug → redirect to base route
+            const currentPath = this.router.url.startsWith('/board') ? 'board' : 'graph';
+            this.router.navigate([`/${currentPath}`], { replaceUrl: true });
+          }
+        } else {
+          this.teamLockedByRoute.set(false);
+          // No team in URL → redirect to last used team if available
+          const restoredTeam = this.teamConfigService.selectedTeam();
+          if (restoredTeam) {
+            const currentPath = this.router.url.startsWith('/board') ? 'board' : 'graph';
+            this.router.navigate(
+              [`/${currentPath}`, TeamConfigService.slugify(restoredTeam.name)],
+              { replaceUrl: true },
+            );
           }
         }
       });
@@ -220,14 +252,9 @@ export class SelectorComponent {
     const team = this.teamConfigService.teams().find(t => t.name === name);
     if (team) {
       this.teamConfigService.selectTeam(team);
-      // Navigate to URL with team slug
       const currentPath = this.router.url.startsWith('/board') ? 'board' : 'graph';
-      this.router.navigate([`/${currentPath}`, this.slugify(team.name)]);
+      this.router.navigate([`/${currentPath}`, TeamConfigService.slugify(team.name)]);
     }
-  }
-
-  private slugify(name: string): string {
-    return name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '');
   }
 
   onEpicToggle(epic: Epic): void {
@@ -252,7 +279,7 @@ export class SelectorComponent {
 
     forkJoin([epics$, relevantIds$]).subscribe({
       next: ([epics, relevantIds]) => {
-        const filtered = relevantIds
+        const filtered = relevantIds !== null && relevantIds.size > 0
           ? epics.filter(e => relevantIds.has(e.id))
           : epics;
         this.epics.set(filtered);

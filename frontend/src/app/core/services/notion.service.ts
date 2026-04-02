@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, expand, reduce, map, retry, timer, EMPTY } from 'rxjs';
+import { Observable, of, expand, reduce, map, retry, timer, EMPTY } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { TeamConfig, EpicFilterCondition } from '../models/team-config.model';
 import { Ticket, Assignee, Epic, NotionPage, NotionQueryResponse } from '../models/ticket.model';
@@ -107,10 +107,10 @@ export class NotionService {
     );
   }
 
-  /** Fetch epic IDs that have at least one ticket matching the ticketFilter. */
-  getRelevantEpicIds(teamConfig: TeamConfig): Observable<Set<string>> {
+  /** Fetch epic IDs that have at least one ticket matching the ticketFilter. Returns null if no ticketFilter. */
+  getRelevantEpicIds(teamConfig: TeamConfig): Observable<Set<string> | null> {
     if (!teamConfig.ticketFilter?.length) {
-      return new Observable(sub => { sub.next(null as any); sub.complete(); });
+      return of(null);
     }
 
     const filter = this.buildEpicFilter(teamConfig.ticketFilter);

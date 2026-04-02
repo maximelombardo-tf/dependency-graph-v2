@@ -9,6 +9,15 @@ export class TeamConfigService {
   // (TeamInterceptor → TeamConfigService → HttpClient → TeamInterceptor)
   private readonly http = new HttpClient(inject(HttpBackend));
 
+  static slugify(name: string): string {
+    return name
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9\-]/g, '');
+  }
+
   readonly teams = signal<TeamConfig[]>([]);
   readonly loadingTeams = signal(true);
   readonly selectedTeam = signal<TeamConfig | null>(null);

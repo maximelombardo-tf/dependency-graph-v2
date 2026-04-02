@@ -536,11 +536,7 @@ export class GraphComponent implements AfterViewInit {
 
   getNavLink(target: string): string {
     const team = this.teamConfigService.selectedTeam();
-    if (team) {
-      const slug = team.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '');
-      return `/${target}/${slug}`;
-    }
-    return `/${target}`;
+    return team ? `/${target}/${TeamConfigService.slugify(team.name)}` : `/${target}`;
   }
 
   getEpicColor(ticket: Ticket): string | null {
