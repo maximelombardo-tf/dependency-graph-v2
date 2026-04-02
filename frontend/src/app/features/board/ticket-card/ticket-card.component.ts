@@ -56,7 +56,7 @@ import { TeamConfigService } from '../../../core/services/team-config.service';
         @if (ticket().extraFields[field]) {
           <div class="mt-1 flex items-center gap-1">
             <span class="text-xs text-gray-400">{{ field }}:</span>
-            <span class="text-xs text-gray-600 truncate">{{ ticket().extraFields[field] }}</span>
+            <span class="text-xs text-gray-600 truncate">{{ formatFieldValue(ticket().extraFields[field]) }}</span>
           </div>
         }
       }
@@ -78,6 +78,16 @@ export class TicketCardComponent {
 
   readonly linkStart = output<{ ticketId: string; side: 'left' | 'right' }>();
   readonly linkEnd = output<{ ticketId: string }>();
+
+  private static dateFormatter = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' });
+
+  formatFieldValue(value: string): string {
+    if (/^\d{4}-\d{2}-\d{2}/.test(value)) {
+      const date = new Date(value);
+      if (!isNaN(date.getTime())) return TicketCardComponent.dateFormatter.format(date);
+    }
+    return value;
+  }
 
   getEpicColor(): string | null {
     const colorMap = this.teamConfigService.epicColorMap();

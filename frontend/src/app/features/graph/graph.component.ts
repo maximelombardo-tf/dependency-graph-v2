@@ -122,6 +122,16 @@ const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
             </svg>
           </button>
+          <button
+            class="p-1.5 rounded-md transition-colors"
+            [class]="timelineMode() ? 'text-blue-600 bg-blue-100' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'"
+            (click)="toggleTimeline()"
+            [title]="timelineMode() ? 'Vue dépendances' : 'Vue timeline par date'"
+          >
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </button>
           @if (authService.userName()) {
             <span class="text-sm text-gray-600">{{ authService.userName() }}</span>
           }
@@ -193,6 +203,21 @@ const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
                 class="absolute origin-top-left"
                 [style.transform]="'translate(' + panX() + 'px, ' + panY() + 'px) scale(' + zoom() + ')'"
               >
+                <!-- Timeline column labels -->
+                @if (timelineMode()) {
+                  @for (col of timelineColumns(); track col.label) {
+                    <div
+                      class="absolute flex flex-col items-center select-none"
+                      [style.left.px]="col.x"
+                      [style.top.px]="30"
+                      [style.width.px]="280"
+                    >
+                      <span class="text-sm font-semibold text-gray-500">{{ col.label }}</span>
+                      <div class="w-px bg-gray-200 absolute top-6" style="height: 5000px;"></div>
+                    </div>
+                  }
+                }
+
                 <!-- Group rectangles -->
                 @for (group of groups(); track group.id) {
                   <div
@@ -347,7 +372,7 @@ const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
                         @if (node.ticket.extraFields[field]) {
                           <div class="mt-1 flex items-center gap-1">
                             <span class="text-xs text-gray-400">{{ field }}:</span>
-                            <span class="text-xs text-gray-600 truncate">{{ node.ticket.extraFields[field] }}</span>
+                            <span class="text-xs text-gray-600 truncate">{{ formatFieldValue(node.ticket.extraFields[field]) }}</span>
                           </div>
                         }
                       }
@@ -441,6 +466,8 @@ export class GraphComponent implements AfterViewInit {
   readonly selectionRect = signal<{ x: number; y: number; w: number; h: number } | null>(null);
   readonly groups = signal<GraphGroup[]>([]);
   readonly highlightedEpicId = signal<string | null>(null);
+  readonly timelineMode = signal(false);
+  readonly timelineColumns = signal<{ label: string; x: number }[]>([]);
 
   readonly legendItems = LEGEND_ITEMS;
   readonly columnDefinitions = COLUMN_DEFINITIONS;
@@ -532,6 +559,16 @@ export class GraphComponent implements AfterViewInit {
     const hl = this.highlightedEpicId();
     if (!hl) return false;
     return !ticket.epicIds.includes(hl);
+  }
+
+  private static dateFormatter = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' });
+
+  formatFieldValue(value: string): string {
+    if (/^\d{4}-\d{2}-\d{2}/.test(value)) {
+      const date = new Date(value);
+      if (!isNaN(date.getTime())) return GraphComponent.dateFormatter.format(date);
+    }
+    return value;
   }
 
   getNavLink(target: string): string {
@@ -759,6 +796,14 @@ export class GraphComponent implements AfterViewInit {
       }
     }
     this.edges.set(edges);
+
+    if (this.timelineMode()) {
+      const nodes = this.computeTimelineLayout(tickets);
+      this.nodes.set(nodes);
+      this.centerView(nodes);
+      return;
+    }
+
     let nodes = this.computeLayout(tickets, edges);
 
     // Try to restore saved positions; only center if no saved layout
@@ -912,9 +957,94 @@ export class GraphComponent implements AfterViewInit {
   autoLayout(): void {
     const tickets = this.tickets();
     if (tickets.length === 0) return;
-    this.nodes.set(this.computeLayout(tickets, this.edges()));
+    if (this.timelineMode()) {
+      this.nodes.set(this.computeTimelineLayout(tickets));
+    } else {
+      this.nodes.set(this.computeLayout(tickets, this.edges()));
+    }
     this.centerView(this.nodes());
     this.saveLayout();
+  }
+
+  toggleTimeline(): void {
+    this.timelineMode.update(v => !v);
+    const tickets = this.tickets();
+    if (tickets.length > 0) {
+      this.buildGraph(tickets);
+    }
+  }
+
+  private getTimelineDateField(): string | null {
+    // Look for a date field in extraDisplayFields first
+    const displayFields = this.teamConfigService.extraDisplayFields();
+    const available = this.teamConfigService.availableExtraFields();
+    for (const field of displayFields) {
+      // Check if any ticket has an ISO date value for this field
+      const sample = this.tickets().find(t => /^\d{4}-\d{2}-\d{2}/.test(t.extraFields[field] || ''));
+      if (sample) return field;
+    }
+    // Fallback: find any available field with "date" in its name
+    for (const field of available) {
+      if (field.toLowerCase().includes('date')) {
+        const sample = this.tickets().find(t => /^\d{4}-\d{2}-\d{2}/.test(t.extraFields[field] || ''));
+        if (sample) return field;
+      }
+    }
+    return null;
+  }
+
+  private computeTimelineLayout(tickets: Ticket[]): GraphNode[] {
+    if (tickets.length === 0) { this.timelineColumns.set([]); return []; }
+
+    const dateField = this.getTimelineDateField();
+    const nodeW = GraphComponent.NODE_WIDTH;
+    const nodeH = GraphComponent.NODE_HEIGHT;
+    const colWidth = nodeW + 60;
+    const rowGap = nodeH + 30;
+    const headerY = 80;
+
+    // Group tickets by date
+    const groups = new Map<string, Ticket[]>();
+    for (const ticket of tickets) {
+      const rawDate = dateField ? (ticket.extraFields[dateField] || '') : '';
+      const dateKey = /^\d{4}-\d{2}-\d{2}/.test(rawDate) ? rawDate.substring(0, 10) : '__none__';
+      const list = groups.get(dateKey) ?? [];
+      list.push(ticket);
+      groups.set(dateKey, list);
+    }
+
+    // Sort date keys chronologically, "no date" at the end
+    const sortedKeys = Array.from(groups.keys()).sort((a, b) => {
+      if (a === '__none__') return 1;
+      if (b === '__none__') return -1;
+      return a.localeCompare(b);
+    });
+
+    // Build column labels and node positions
+    const columns: { label: string; x: number }[] = [];
+    const nodes: GraphNode[] = [];
+    const formatter = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' });
+
+    sortedKeys.forEach((key, colIndex) => {
+      const x = colIndex * colWidth + 100;
+      const label = key === '__none__'
+        ? 'Sans date'
+        : formatter.format(new Date(key));
+      columns.push({ label, x: x + nodeW / 2 - 40 });
+
+      const ticketsInCol = groups.get(key)!;
+      ticketsInCol.forEach((ticket, rowIndex) => {
+        nodes.push({
+          ticket,
+          x,
+          y: headerY + rowIndex * rowGap,
+          dragging: false,
+        });
+      });
+    });
+
+    this.timelineColumns.set(columns);
+    return nodes;
   }
 
   private computeEdgePath(from: GraphNode, to: GraphNode): string {
