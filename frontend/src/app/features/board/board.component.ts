@@ -195,6 +195,7 @@ export class BoardComponent implements AfterViewInit {
     this.notionService.getTicketsForEpics(team, epics.map(e => e.id)).subscribe({
       next: tickets => {
         this.tickets.set(tickets);
+        this.updateAvailableFields(tickets);
         const deps = this.dependencyService.buildDependenciesFromTickets(tickets);
         this.dependencies.set(deps);
         this.loading.set(false);
@@ -340,6 +341,16 @@ export class BoardComponent implements AfterViewInit {
     if (this.dependencyService.isLinkMode()) {
       this.dependencyService.cancelLink();
     }
+  }
+
+  private updateAvailableFields(tickets: Ticket[]): void {
+    const fieldSet = new Set<string>();
+    for (const t of tickets) {
+      for (const key of Object.keys(t.extraFields)) {
+        fieldSet.add(key);
+      }
+    }
+    this.teamConfigService.setAvailableExtraFields(Array.from(fieldSet));
   }
 
   private refreshTicketElementMap(): void {

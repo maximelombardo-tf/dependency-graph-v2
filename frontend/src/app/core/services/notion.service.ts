@@ -145,6 +145,14 @@ export class NotionService {
     const props = page.properties;
     const pNames = config.propertiesName;
 
+    const coreProps = new Set([pNames.id, pNames.title, pNames.status, pNames.complexity, pNames.bloque, pNames.epic, pNames.assignedTo]);
+    const extraFields: Record<string, string> = {};
+    for (const [key, value] of Object.entries(props)) {
+      if (coreProps.has(key)) continue;
+      const extracted = this.extractAny(value);
+      if (extracted) extraFields[key] = extracted;
+    }
+
     return {
       id: this.extractText(props[pNames.id]) || page.id,
       notionId: page.id,
@@ -155,6 +163,7 @@ export class NotionService {
       complexity: this.extractText(props[pNames.complexity]) || this.extractSelect(props[pNames.complexity]) || null,
       dependencyIds: this.extractRelation(props[pNames.bloque]),
       notionUrl: page.url,
+      extraFields,
     };
   }
 
@@ -224,6 +233,37 @@ export class NotionService {
       return prop.relation.map((r: any) => r.id);
     }
     return [];
+  }
+
+  private extractAny(prop: any): string {
+    if (!prop) return '';
+    const type = prop.type;
+    if (type === 'title') return this.extractTitle(prop);
+    if (type === 'rich_text') return this.extractText(prop);
+    if (type === 'number' && prop.number != null) return String(prop.number);
+    if (type === 'unique_id') return this.extractText(prop);
+    if (type === 'select' && prop.select) return prop.select.name || '';
+    if (type === 'status' && prop.status) return prop.status.name || '';
+    if (type === 'multi_select' && prop.multi_select) return prop.multi_select.map((s: any) => s.name).join(', ');
+    if (type === 'checkbox') return prop.checkbox ? 'Oui' : 'Non';
+    if (type === 'date' && prop.date?.start) return prop.date.start;
+    if (type === 'people') return (prop.people || []).map((p: any) => p.name).filter(Boolean).join(', ');
+    if (type === 'formula') {
+      const f = prop.formula;
+      if (f.type === 'string') return f.string || '';
+      if (f.type === 'number' && f.number != null) return String(f.number);
+      if (f.type === 'boolean') return f.boolean ? 'Oui' : 'Non';
+      if (f.type === 'date' && f.date?.start) return f.date.start;
+    }
+    if (type === 'rollup') {
+      const r = prop.rollup;
+      if (r.type === 'number' && r.number != null) return String(r.number);
+      if (r.type === 'array' && r.array) return r.array.map((item: any) => this.extractAny(item)).filter(Boolean).join(', ');
+    }
+    if (type === 'url' && prop.url) return prop.url;
+    if (type === 'email' && prop.email) return prop.email;
+    if (type === 'phone_number' && prop.phone_number) return prop.phone_number;
+    return '';
   }
 
   private retryOnRateLimit<T>() {

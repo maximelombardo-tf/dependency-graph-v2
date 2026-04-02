@@ -13,6 +13,8 @@ export class TeamConfigService {
   readonly loadingTeams = signal(true);
   readonly selectedTeam = signal<TeamConfig | null>(null);
   readonly selectedEpics = signal<Epic[]>([]);
+  readonly extraDisplayFields = signal<string[]>([]);
+  readonly availableExtraFields = signal<string[]>([]);
 
   readonly hasSelection = computed(() => !!this.selectedTeam() && this.selectedEpics().length > 0);
 
@@ -34,11 +36,16 @@ export class TeamConfigService {
     });
   }
 
+  private get displayFieldsKey(): string {
+    return `displayFields_${this.selectedTeam()?.id}`;
+  }
+
   selectTeam(team: TeamConfig): void {
     this.selectedTeam.set(team);
     this.selectedEpics.set([]);
     localStorage.setItem('selectedTeamName', team.name);
     localStorage.removeItem('selectedEpics');
+    this.restoreDisplayFields();
   }
 
   toggleEpic(epic: Epic): void {
@@ -74,6 +81,37 @@ export class TeamConfigService {
         }
       } catch {}
     }
+  }
+
+  setAvailableExtraFields(fields: string[]): void {
+    this.availableExtraFields.set(fields.sort());
+  }
+
+  toggleDisplayField(field: string): void {
+    const current = this.extraDisplayFields();
+    if (current.includes(field)) {
+      const updated = current.filter(f => f !== field);
+      this.extraDisplayFields.set(updated);
+      localStorage.setItem(this.displayFieldsKey, JSON.stringify(updated));
+    } else if (current.length < 2) {
+      const updated = [...current, field];
+      this.extraDisplayFields.set(updated);
+      localStorage.setItem(this.displayFieldsKey, JSON.stringify(updated));
+    }
+  }
+
+  private restoreDisplayFields(): void {
+    try {
+      const raw = localStorage.getItem(this.displayFieldsKey);
+      if (raw) {
+        const fields: string[] = JSON.parse(raw);
+        if (Array.isArray(fields)) {
+          this.extraDisplayFields.set(fields.slice(0, 2));
+          return;
+        }
+      }
+    } catch {}
+    this.extraDisplayFields.set([]);
   }
 
   getColumnKeyForStatus(status: string): ColumnKey | null {

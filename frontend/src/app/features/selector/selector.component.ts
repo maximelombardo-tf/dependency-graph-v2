@@ -31,12 +31,13 @@ import { Epic } from '../../core/models/ticket.model';
         </select>
       </div>
 
+      <!-- Epic multi-select -->
       <div class="flex items-center gap-2 relative">
         <label class="text-sm font-medium text-gray-700">Epic</label>
         <button
           class="rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-left min-w-[200px] flex items-center justify-between gap-2"
           [disabled]="!teamConfigService.selectedTeam() || loadingEpics()"
-          (click)="toggleDropdown($event)"
+          (click)="toggleDropdown('epic', $event)"
         >
           <span class="truncate">
             @if (loadingEpics()) {
@@ -54,7 +55,7 @@ import { Epic } from '../../core/models/ticket.model';
           </svg>
         </button>
 
-        @if (dropdownOpen()) {
+        @if (openDropdown() === 'epic') {
           <div class="absolute top-full left-8 mt-1 z-50 bg-white rounded-md border border-gray-200 shadow-lg w-72 max-h-64 overflow-y-auto">
             @if (epics().length > 3) {
               <div class="sticky top-0 bg-white border-b border-gray-100 p-2">
@@ -76,7 +77,7 @@ import { Epic } from '../../core/models/ticket.model';
                   <input
                     type="checkbox"
                     class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    [checked]="isSelected(epic)"
+                    [checked]="isEpicSelected(epic)"
                     (change)="onEpicToggle(epic)"
                   />
                   <span class="truncate">{{ epic.title }}</span>
@@ -90,6 +91,54 @@ import { Epic } from '../../core/models/ticket.model';
         }
       </div>
 
+      <!-- Extra fields picker -->
+      @if (teamConfigService.availableExtraFields().length > 0) {
+        <div class="flex items-center gap-2 relative">
+          <label class="text-sm font-medium text-gray-700">Champs</label>
+          <button
+            class="rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-left min-w-[160px] flex items-center justify-between gap-2"
+            (click)="toggleDropdown('fields', $event)"
+          >
+            <span class="truncate">
+              @if (teamConfigService.extraDisplayFields().length === 0) {
+                Ajouter des champs
+              } @else {
+                {{ teamConfigService.extraDisplayFields().join(', ') }}
+              }
+            </span>
+            <svg class="w-4 h-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          @if (openDropdown() === 'fields') {
+            <div class="absolute top-full left-8 mt-1 z-50 bg-white rounded-md border border-gray-200 shadow-lg w-64 max-h-64 overflow-y-auto">
+              <div class="px-3 py-2 text-xs text-gray-400 border-b border-gray-100">
+                Max 2 champs supplémentaires
+              </div>
+              <div class="py-1">
+                @for (field of teamConfigService.availableExtraFields(); track field) {
+                  <label
+                    class="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 cursor-pointer text-sm"
+                    [class.opacity-50]="!isFieldSelected(field) && teamConfigService.extraDisplayFields().length >= 2"
+                    (click)="$event.stopPropagation()"
+                  >
+                    <input
+                      type="checkbox"
+                      class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      [checked]="isFieldSelected(field)"
+                      [disabled]="!isFieldSelected(field) && teamConfigService.extraDisplayFields().length >= 2"
+                      (change)="onFieldToggle(field)"
+                    />
+                    <span class="truncate">{{ field }}</span>
+                  </label>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      }
+
       @if (loadingEpics()) {
         <div class="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
       }
@@ -102,7 +151,7 @@ export class SelectorComponent {
 
   readonly epics = signal<Epic[]>([]);
   readonly loadingEpics = signal(false);
-  readonly dropdownOpen = signal(false);
+  readonly openDropdown = signal<'epic' | 'fields' | null>(null);
   readonly searchQuery = signal('');
 
   readonly filteredEpics = () => {
@@ -122,20 +171,27 @@ export class SelectorComponent {
 
   @HostListener('document:click')
   onDocumentClick(): void {
-    this.dropdownOpen.set(false);
+    this.openDropdown.set(null);
     this.searchQuery.set('');
   }
 
-  toggleDropdown(event: Event): void {
+  toggleDropdown(which: 'epic' | 'fields', event: Event): void {
     event.stopPropagation();
-    this.dropdownOpen.update(v => !v);
-    if (!this.dropdownOpen()) {
+    if (this.openDropdown() === which) {
+      this.openDropdown.set(null);
+      this.searchQuery.set('');
+    } else {
+      this.openDropdown.set(which);
       this.searchQuery.set('');
     }
   }
 
-  isSelected(epic: Epic): boolean {
+  isEpicSelected(epic: Epic): boolean {
     return this.teamConfigService.selectedEpics().some(e => e.id === epic.id);
+  }
+
+  isFieldSelected(field: string): boolean {
+    return this.teamConfigService.extraDisplayFields().includes(field);
   }
 
   onTeamChange(event: Event): void {
@@ -148,6 +204,10 @@ export class SelectorComponent {
 
   onEpicToggle(epic: Epic): void {
     this.teamConfigService.toggleEpic(epic);
+  }
+
+  onFieldToggle(field: string): void {
+    this.teamConfigService.toggleDisplayField(field);
   }
 
   onSearch(event: Event): void {

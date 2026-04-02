@@ -1,5 +1,6 @@
-import { Component, input, output, ChangeDetectionStrategy, HostBinding } from '@angular/core';
+import { Component, input, output, inject, ChangeDetectionStrategy } from '@angular/core';
 import { Ticket } from '../../../core/models/ticket.model';
+import { TeamConfigService } from '../../../core/services/team-config.service';
 
 @Component({
   selector: 'app-ticket-card',
@@ -44,6 +45,15 @@ import { Ticket } from '../../../core/models/ticket.model';
         </div>
       </div>
 
+      @for (field of teamConfigService.extraDisplayFields(); track field) {
+        @if (ticket().extraFields[field]) {
+          <div class="mt-1 flex items-center gap-1">
+            <span class="text-xs text-gray-400">{{ field }}:</span>
+            <span class="text-xs text-gray-600 truncate">{{ ticket().extraFields[field] }}</span>
+          </div>
+        }
+      }
+
       @if (ticket().dependencyIds.length > 0) {
         <div class="mt-1.5 flex items-center gap-1">
           <span class="text-xs text-orange-600">
@@ -55,6 +65,7 @@ import { Ticket } from '../../../core/models/ticket.model';
   `,
 })
 export class TicketCardComponent {
+  readonly teamConfigService = inject(TeamConfigService);
   readonly ticket = input.required<Ticket>();
   readonly isLinkMode = input(false);
 

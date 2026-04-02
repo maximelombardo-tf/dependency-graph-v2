@@ -314,6 +314,15 @@ const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
                           <span class="text-xs text-gray-500 ml-1 truncate max-w-[120px]">{{ node.ticket.assignees[0].name }}</span>
                         </div>
                       }
+
+                      @for (field of teamConfigService.extraDisplayFields(); track field) {
+                        @if (node.ticket.extraFields[field]) {
+                          <div class="mt-1 flex items-center gap-1">
+                            <span class="text-xs text-gray-400">{{ field }}:</span>
+                            <span class="text-xs text-gray-600 truncate">{{ node.ticket.extraFields[field] }}</span>
+                          </div>
+                        }
+                      }
                     </div>
                   </div>
                 }
@@ -657,6 +666,7 @@ export class GraphComponent implements AfterViewInit {
     this.notionService.getTicketsForEpics(team, epics.map(e => e.id)).subscribe({
       next: tickets => {
         this.tickets.set(tickets);
+        this.updateAvailableFields(tickets);
         this.buildGraph(tickets);
         this.loading.set(false);
       },
@@ -666,6 +676,16 @@ export class GraphComponent implements AfterViewInit {
         this.loading.set(false);
       },
     });
+  }
+
+  private updateAvailableFields(tickets: Ticket[]): void {
+    const fieldSet = new Set<string>();
+    for (const t of tickets) {
+      for (const key of Object.keys(t.extraFields)) {
+        fieldSet.add(key);
+      }
+    }
+    this.teamConfigService.setAvailableExtraFields(Array.from(fieldSet));
   }
 
   private buildGraph(tickets: Ticket[]): void {

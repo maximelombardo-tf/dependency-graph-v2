@@ -13,6 +13,7 @@ export interface Ticket {
   complexity: string | null;
   dependencyIds: string[];
   notionUrl: string;
+  extraFields: Record<string, string>;
 }
 
 export interface Epic {
