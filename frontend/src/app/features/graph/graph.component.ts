@@ -466,8 +466,8 @@ export class GraphComponent implements AfterViewInit {
   constructor() {
     effect(() => {
       const team = this.teamConfigService.selectedTeam();
-      const epic = this.teamConfigService.selectedEpic();
-      if (team && epic) this.fetchTickets();
+      const epics = this.teamConfigService.selectedEpics();
+      if (team && epics.length > 0) this.fetchTickets();
     });
   }
 
@@ -650,11 +650,11 @@ export class GraphComponent implements AfterViewInit {
 
   fetchTickets(): void {
     const team = this.teamConfigService.selectedTeam();
-    const epic = this.teamConfigService.selectedEpic();
-    if (!team || !epic) return;
+    const epics = this.teamConfigService.selectedEpics();
+    if (!team || epics.length === 0) return;
 
     this.loading.set(true);
-    this.notionService.getTicketsForEpic(team, epic.id).subscribe({
+    this.notionService.getTicketsForEpics(team, epics.map(e => e.id)).subscribe({
       next: tickets => {
         this.tickets.set(tickets);
         this.buildGraph(tickets);
@@ -1080,8 +1080,9 @@ export class GraphComponent implements AfterViewInit {
 
   private get layoutKey(): string {
     const team = this.teamConfigService.selectedTeam();
-    const epic = this.teamConfigService.selectedEpic();
-    return `graph_layout_${team?.id}_${epic?.id}`;
+    const epics = this.teamConfigService.selectedEpics();
+    const epicKey = epics.map(e => e.id).sort().join('_');
+    return `graph_layout_${team?.id}_${epicKey}`;
   }
 
   saveLayout(): void {

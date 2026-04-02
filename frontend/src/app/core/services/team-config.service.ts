@@ -12,9 +12,9 @@ export class TeamConfigService {
   readonly teams = signal<TeamConfig[]>([]);
   readonly loadingTeams = signal(true);
   readonly selectedTeam = signal<TeamConfig | null>(null);
-  readonly selectedEpic = signal<Epic | null>(null);
+  readonly selectedEpics = signal<Epic[]>([]);
 
-  readonly hasSelection = computed(() => !!this.selectedTeam() && !!this.selectedEpic());
+  readonly hasSelection = computed(() => !!this.selectedTeam() && this.selectedEpics().length > 0);
 
   constructor() {
     this.loadTeamsFromApi();
@@ -36,14 +36,24 @@ export class TeamConfigService {
 
   selectTeam(team: TeamConfig): void {
     this.selectedTeam.set(team);
-    this.selectedEpic.set(null);
+    this.selectedEpics.set([]);
     localStorage.setItem('selectedTeamName', team.name);
+    localStorage.removeItem('selectedEpics');
   }
 
-  selectEpic(epic: Epic): void {
-    this.selectedEpic.set(epic);
-    localStorage.setItem('selectedEpicId', epic.id);
-    localStorage.setItem('selectedEpicTitle', epic.title);
+  toggleEpic(epic: Epic): void {
+    const current = this.selectedEpics();
+    const exists = current.some(e => e.id === epic.id);
+    const updated = exists
+      ? current.filter(e => e.id !== epic.id)
+      : [...current, epic];
+    this.selectedEpics.set(updated);
+    localStorage.setItem('selectedEpics', JSON.stringify(updated));
+  }
+
+  setEpics(epics: Epic[]): void {
+    this.selectedEpics.set(epics);
+    localStorage.setItem('selectedEpics', JSON.stringify(epics));
   }
 
   restoreSelection(): void {
@@ -55,10 +65,14 @@ export class TeamConfigService {
       }
     }
 
-    const epicId = localStorage.getItem('selectedEpicId');
-    const epicTitle = localStorage.getItem('selectedEpicTitle');
-    if (epicId && epicTitle) {
-      this.selectedEpic.set({ id: epicId, title: epicTitle });
+    const epicsRaw = localStorage.getItem('selectedEpics');
+    if (epicsRaw) {
+      try {
+        const epics: Epic[] = JSON.parse(epicsRaw);
+        if (Array.isArray(epics) && epics.length > 0) {
+          this.selectedEpics.set(epics);
+        }
+      } catch {}
     }
   }
 

@@ -90,6 +90,31 @@ export class NotionService {
     );
   }
 
+  getTicketsForEpics(teamConfig: TeamConfig, epicIds: string[]): Observable<Ticket[]> {
+    if (epicIds.length === 0) return new Observable(sub => { sub.next([]); sub.complete(); });
+    if (epicIds.length === 1) return this.getTicketsForEpic(teamConfig, epicIds[0]);
+
+    const filter = {
+      or: epicIds.map(id => ({
+        property: teamConfig.propertiesName.epic,
+        relation: { contains: id },
+      })),
+    };
+
+    return this.queryDatabase(teamConfig.usDatabaseId, filter).pipe(
+      map(pages => {
+        const seen = new Set<string>();
+        return pages
+          .map(page => this.mapToTicket(page, teamConfig))
+          .filter(ticket => {
+            if (seen.has(ticket.notionId)) return false;
+            seen.add(ticket.notionId);
+            return true;
+          });
+      }),
+    );
+  }
+
   addDependency(
     pageId: string,
     currentDepIds: string[],
