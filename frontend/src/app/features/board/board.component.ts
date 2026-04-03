@@ -17,7 +17,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { TeamConfigService } from '../../core/services/team-config.service';
 import { NotionService } from '../../core/services/notion.service';
 import { DependencyService } from '../../core/services/dependency.service';
-import { Ticket } from '../../core/models/ticket.model';
+import { Ticket, Assignee } from '../../core/models/ticket.model';
 import { Dependency } from '../../core/models/dependency.model';
 import { COLUMN_DEFINITIONS, ColumnKey } from '../../core/models/team-config.model';
 import { ToastService } from '../../shared/components/toast.service';
@@ -104,6 +104,7 @@ interface ColumnData {
                   (ticketDropped)="onTicketDropped($event)"
                   (linkStart)="onLinkStart($event)"
                   (linkEnd)="onLinkEnd($event)"
+                  (cardClicked)="onCardClicked($event)"
                 />
               }
             </div>
@@ -114,6 +115,39 @@ interface ColumnData {
               [scrollContainer]="boardContainerEl!"
               (deleteDependency)="onDeleteDependency($event)"
             />
+
+            @if (assigneePicker()) {
+              <div
+                class="fixed z-50 bg-white rounded-lg shadow-xl border border-gray-200 py-1 w-56 max-h-72 overflow-y-auto"
+                [style.left.px]="assigneePicker()!.x"
+                [style.top.px]="assigneePicker()!.y"
+                (mousedown)="$event.stopPropagation()"
+                (click)="$event.stopPropagation()"
+              >
+                <div class="px-3 py-2 text-xs font-semibold text-gray-400 border-b border-gray-100">Assigner</div>
+                <button
+                  class="w-full px-3 py-1.5 text-sm text-left hover:bg-gray-50 flex items-center gap-2 text-red-500"
+                  (click)="selectAssignee(null)"
+                >
+                  Retirer l'assignation
+                </button>
+                @for (person of allAssignees(); track person.id) {
+                  <button
+                    class="w-full px-3 py-1.5 text-sm text-left hover:bg-gray-50 flex items-center gap-2"
+                    (click)="selectAssignee(person)"
+                  >
+                    @if (person.avatarUrl) {
+                      <img [src]="person.avatarUrl" [alt]="person.name" class="w-5 h-5 rounded-full object-cover" referrerpolicy="no-referrer" />
+                    } @else {
+                      <div class="w-5 h-5 rounded-full bg-gray-300 flex items-center justify-center text-xs font-medium text-gray-600">
+                        {{ person.name.charAt(0) }}
+                      </div>
+                    }
+                    {{ person.name }}
+                  </button>
+                }
+              </div>
+            }
           </div>
         }
       } @else {
@@ -139,6 +173,17 @@ export class BoardComponent implements AfterViewInit {
   readonly error = signal<string | null>(null);
   readonly dependencies = signal<Dependency[]>([]);
   readonly ticketElementsMap = signal<Map<string, HTMLElement>>(new Map());
+  readonly assigneePicker = signal<{ x: number; y: number; ticket: Ticket } | null>(null);
+
+  readonly allAssignees = computed<Assignee[]>(() => {
+    const seen = new Map<string, Assignee>();
+    for (const ticket of this.tickets()) {
+      for (const a of ticket.assignees) {
+        if (!seen.has(a.id)) seen.set(a.id, a);
+      }
+    }
+    return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name));
+  });
 
   readonly columns = computed<ColumnData[]>(() => {
     const team = this.teamConfigService.selectedTeam();
@@ -181,6 +226,7 @@ export class BoardComponent implements AfterViewInit {
   @HostListener('document:keydown.escape')
   onEscape(): void {
     this.dependencyService.cancelLink();
+    this.assigneePicker.set(null);
   }
 
   @HostListener('document:keydown.r', ['$event'])
@@ -347,6 +393,38 @@ export class BoardComponent implements AfterViewInit {
     if (this.dependencyService.isLinkMode()) {
       this.dependencyService.cancelLink();
     }
+    this.assigneePicker.set(null);
+  }
+
+  onCardClicked(event: { ticket: Ticket; x: number; y: number }): void {
+    this.assigneePicker.set({ x: event.x, y: event.y, ticket: event.ticket });
+  }
+
+  selectAssignee(assignee: Assignee | null): void {
+    const picker = this.assigneePicker();
+    if (!picker) return;
+
+    const team = this.teamConfigService.selectedTeam();
+    if (!team) return;
+
+    const ticketId = picker.ticket.notionId;
+    const previousAssignees = picker.ticket.assignees;
+    const previousAssignee = picker.ticket.assignee;
+
+    const newAssignees = assignee ? [assignee] : [];
+    const newAssignee = assignee ? assignee.name : null;
+    this.tickets.update(ts => ts.map(t => t.notionId === ticketId ? { ...t, assignee: newAssignee, assignees: newAssignees } : t));
+    this.assigneePicker.set(null);
+
+    this.notionService.updatePageProperty(ticketId, {
+      [team.propertiesName.assignedTo]: { people: assignee ? [{ id: assignee.id }] : [] },
+    }).subscribe({
+      error: err => {
+        console.error('Failed to update assignee:', err);
+        this.toastService.error("Erreur lors du changement d'assignation.");
+        this.tickets.update(ts => ts.map(t => t.notionId === ticketId ? { ...t, assignee: previousAssignee, assignees: previousAssignees } : t));
+      },
+    });
   }
 
   private updateAvailableFields(tickets: Ticket[]): void {

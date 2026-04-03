@@ -265,8 +265,9 @@ export class NotionService {
   private extractAllPeople(prop: any): Assignee[] {
     if (!prop || prop.type !== 'people' || !prop.people) return [];
     return prop.people
-      .filter((p: any) => p.name)
+      .filter((p: any) => p.name && p.id)
       .map((p: any) => ({
+        id: p.id,
         name: p.name,
         avatarUrl: p.avatar_url || null,
       }));

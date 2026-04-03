@@ -1,6 +1,7 @@
 import { Component, input, output, inject, ChangeDetectionStrategy } from '@angular/core';
 import { Ticket } from '../../../core/models/ticket.model';
 import { TeamConfigService } from '../../../core/services/team-config.service';
+import { getStatusColor } from '../../../core/utils/status-colors';
 
 @Component({
   selector: 'app-ticket-card',
@@ -11,7 +12,8 @@ import { TeamConfigService } from '../../../core/services/team-config.service';
   },
   template: `
     <div
-      class="group relative bg-white rounded-lg border border-gray-200 p-3 shadow-sm hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing"
+      class="group relative rounded-lg border-2 p-3 shadow-sm hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing"
+      [class]="getCardColorClasses()"
       (click)="onCardClick($event)"
     >
       @if (teamConfigService.selectedEpics().length > 1 && getEpicColor()) {
@@ -78,6 +80,7 @@ export class TicketCardComponent {
 
   readonly linkStart = output<{ ticketId: string; side: 'left' | 'right' }>();
   readonly linkEnd = output<{ ticketId: string }>();
+  readonly cardClicked = output<{ ticket: Ticket; x: number; y: number }>();
 
   private static dateFormatter = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' });
 
@@ -107,10 +110,18 @@ export class TicketCardComponent {
     return '';
   }
 
+  getCardColorClasses(): string {
+    const columnKey = this.teamConfigService.getColumnKeyForStatus(this.ticket().status);
+    const colors = getStatusColor(columnKey);
+    return `${colors.bg} ${colors.border}`;
+  }
+
   onCardClick(event: MouseEvent): void {
     if (this.isLinkMode()) {
       event.stopPropagation();
       this.linkEnd.emit({ ticketId: this.ticket().notionId });
+    } else {
+      this.cardClicked.emit({ ticket: this.ticket(), x: event.clientX, y: event.clientY });
     }
   }
 

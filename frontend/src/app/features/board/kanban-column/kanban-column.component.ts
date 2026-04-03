@@ -32,6 +32,7 @@ import { TicketCardComponent } from '../ticket-card/ticket-card.component';
               [isLinkMode]="isLinkMode()"
               (linkStart)="linkStart.emit($event)"
               (linkEnd)="linkEnd.emit($event)"
+              (cardClicked)="cardClicked.emit($event)"
             />
           </div>
         }
@@ -55,6 +56,7 @@ export class KanbanColumnComponent {
   readonly ticketDropped = output<{ ticket: Ticket; newColumnId: string; previousIndex: number; currentIndex: number }>();
   readonly linkStart = output<{ ticketId: string; side: 'left' | 'right' }>();
   readonly linkEnd = output<{ ticketId: string }>();
+  readonly cardClicked = output<{ ticket: Ticket; x: number; y: number }>();
 
   onDrop(event: CdkDragDrop<Ticket[]>): void {
     if (event.previousContainer === event.container && event.previousIndex === event.currentIndex) {

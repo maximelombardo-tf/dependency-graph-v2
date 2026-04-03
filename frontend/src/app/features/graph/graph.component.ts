@@ -16,9 +16,10 @@ import { AuthService } from '../../core/services/auth.service';
 import { TeamConfigService } from '../../core/services/team-config.service';
 import { NotionService } from '../../core/services/notion.service';
 import { ToastService } from '../../shared/components/toast.service';
-import { Ticket } from '../../core/models/ticket.model';
+import { Ticket, Assignee } from '../../core/models/ticket.model';
 import { Dependency } from '../../core/models/dependency.model';
 import { COLUMN_DEFINITIONS, ColumnKey } from '../../core/models/team-config.model';
+import { getStatusColor, LEGEND_ITEMS } from '../../core/utils/status-colors';
 import { RouterLink } from '@angular/router';
 
 interface GraphNode {
@@ -54,32 +55,7 @@ const GROUP_COLORS = [
   { name: 'Cyan',   hex: '#06B6D4' },
 ];
 
-function getStatusColor(columnKey: ColumnKey | null): { bg: string; border: string } {
-  const colorMap: Record<ColumnKey, { bg: string; border: string }> = {
-    backlogToPrepare: { bg: 'bg-gray-50',    border: 'border-gray-300' },
-    toChallenge:      { bg: 'bg-amber-50',   border: 'border-amber-300' },
-    toStrat:          { bg: 'bg-purple-50',  border: 'border-purple-300' },
-    toDev:            { bg: 'bg-green-50',   border: 'border-green-300' },
-    sprintBacklog:    { bg: 'bg-sky-50',     border: 'border-sky-300' },
-    isInProgress:     { bg: 'bg-blue-50',    border: 'border-blue-400' },
-    toValidate:       { bg: 'bg-indigo-50',  border: 'border-indigo-300' },
-    blocked:          { bg: 'bg-red-50',     border: 'border-red-400' },
-    done:             { bg: 'bg-emerald-50', border: 'border-emerald-300' },
-  };
-  return columnKey ? colorMap[columnKey] : { bg: 'bg-gray-50', border: 'border-gray-300' };
-}
-
-const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
-  { key: 'backlogToPrepare', label: 'Backlog à préparer', dotClass: 'bg-gray-400' },
-  { key: 'toChallenge',      label: 'A challenger',       dotClass: 'bg-amber-400' },
-  { key: 'toStrat',          label: 'A strater',          dotClass: 'bg-purple-400' },
-  { key: 'toDev',            label: 'Prêt pour le dev',   dotClass: 'bg-green-400' },
-  { key: 'sprintBacklog',    label: 'Sprint Backlog',     dotClass: 'bg-sky-400' },
-  { key: 'isInProgress',     label: 'En cours',           dotClass: 'bg-blue-500' },
-  { key: 'toValidate',       label: 'A valider',          dotClass: 'bg-indigo-400' },
-  { key: 'blocked',          label: 'Bloqué',             dotClass: 'bg-red-500' },
-  { key: 'done',             label: 'En prod',            dotClass: 'bg-emerald-400' },
-];
+// getStatusColor and LEGEND_ITEMS imported from core/utils/status-colors
 
 @Component({
   selector: 'app-graph',
@@ -101,7 +77,7 @@ const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
             @if (linkSource()) {
               Cliquez sur un ticket cible (ESC pour annuler)
             } @else {
-              Points: lier / Clic: changer statut / Clic droit flèche: supprimer
+              Points: lier / Clic: assigner / Clic droit flèche: supprimer
             }
           </span>
           <button
@@ -237,6 +213,9 @@ const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
                       [style.width.px]="280"
                     >
                       <span class="text-sm font-semibold text-gray-500">{{ col.label }}</span>
+                      @if (col.points > 0) {
+                        <span class="text-xs text-gray-400 mt-0.5">{{ col.points }} pts</span>
+                      }
                       <div class="w-px bg-gray-200 absolute top-6" style="height: 5000px;"></div>
                     </div>
                   }
@@ -296,29 +275,6 @@ const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
                     </div>
                   </div>
                 }
-
-                <!-- SVG edges -->
-                <svg class="absolute top-0 left-0 pointer-events-none" [attr.width]="svgSize()" [attr.height]="svgSize()" style="overflow: visible">
-                  <defs>
-                    <marker id="graph-arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                      <polygon points="0 0, 10 3.5, 0 7" fill="#9CA3AF" />
-                    </marker>
-                    <marker id="graph-arrow-blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                      <polygon points="0 0, 10 3.5, 0 7" fill="#3B82F6" />
-                    </marker>
-                  </defs>
-
-                  @for (edge of edgePaths(); track edge.id) {
-                    <g class="pointer-events-auto">
-                      <path [attr.d]="edge.path" fill="none" stroke="transparent" stroke-width="16" class="cursor-pointer" (contextmenu)="onEdgeRightClick($event, edge)" />
-                      <path [attr.d]="edge.path" fill="none" stroke="#9CA3AF" stroke-width="2" marker-end="url(#graph-arrow)" class="pointer-events-none" />
-                    </g>
-                  }
-
-                  @if (pendingEdgePath()) {
-                    <path [attr.d]="pendingEdgePath()" fill="none" stroke="#3B82F6" stroke-width="2" stroke-dasharray="8 4" marker-end="url(#graph-arrow-blue)" />
-                  }
-                </svg>
 
                 <!-- Ticket nodes -->
                 @for (node of nodes(); track node.ticket.notionId) {
@@ -403,6 +359,29 @@ const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
                     </div>
                   </div>
                 }
+
+                <!-- SVG edges (rendered after nodes so arrows appear on top) -->
+                <svg class="absolute top-0 left-0 pointer-events-none" [attr.width]="svgSize()" [attr.height]="svgSize()" style="overflow: visible; z-index: 15;">
+                  <defs>
+                    <marker id="graph-arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                      <polygon points="0 0, 10 3.5, 0 7" fill="#9CA3AF" />
+                    </marker>
+                    <marker id="graph-arrow-blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                      <polygon points="0 0, 10 3.5, 0 7" fill="#3B82F6" />
+                    </marker>
+                  </defs>
+
+                  @for (edge of edgePaths(); track edge.id) {
+                    <g class="pointer-events-auto">
+                      <path [attr.d]="edge.path" fill="none" stroke="transparent" stroke-width="16" class="cursor-pointer" (contextmenu)="onEdgeRightClick($event, edge)" />
+                      <path [attr.d]="edge.path" fill="none" stroke="#9CA3AF" stroke-width="2" marker-end="url(#graph-arrow)" class="pointer-events-none" />
+                    </g>
+                  }
+
+                  @if (pendingEdgePath()) {
+                    <path [attr.d]="pendingEdgePath()" fill="none" stroke="#3B82F6" stroke-width="2" stroke-dasharray="8 4" marker-end="url(#graph-arrow-blue)" />
+                  }
+                </svg>
               </div>
 
               @if (selectionRect()) {
@@ -416,25 +395,35 @@ const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
               }
 </div>
 
-            <!-- Status picker popover (outside canvas to avoid event conflicts) -->
-            @if (statusPicker()) {
+            <!-- Assignee picker popover -->
+            @if (assigneePicker()) {
               <div
                 class="fixed z-50 bg-white rounded-lg shadow-xl border border-gray-200 py-1 w-56 max-h-72 overflow-y-auto"
-                [style.left.px]="statusPicker()!.x"
-                [style.top.px]="statusPicker()!.y"
+                [style.left.px]="assigneePicker()!.x"
+                [style.top.px]="assigneePicker()!.y"
                 (mousedown)="$event.stopPropagation()"
                 (click)="$event.stopPropagation()"
               >
-                <div class="px-3 py-2 text-xs font-semibold text-gray-400 border-b border-gray-100">Changer le statut</div>
-                @for (col of columnDefinitions; track col.key) {
+                <div class="px-3 py-2 text-xs font-semibold text-gray-400 border-b border-gray-100">Assigner</div>
+                <button
+                  class="w-full px-3 py-1.5 text-sm text-left hover:bg-gray-50 flex items-center gap-2 text-red-500"
+                  (click)="selectAssignee(null)"
+                >
+                  Retirer l'assignation
+                </button>
+                @for (person of allAssignees(); track person.id) {
                   <button
                     class="w-full px-3 py-1.5 text-sm text-left hover:bg-gray-50 flex items-center gap-2"
-                    [class.font-semibold]="isCurrentStatus(col.key)"
-                    [class.bg-blue-50]="isCurrentStatus(col.key)"
-                    (click)="changeStatus(col.key)"
+                    (click)="selectAssignee(person)"
                   >
-                    <div class="w-2.5 h-2.5 rounded-full shrink-0" [class]="getLegendDot(col.key)"></div>
-                    {{ col.displayName }}
+                    @if (person.avatarUrl) {
+                      <img [src]="person.avatarUrl" [alt]="person.name" class="w-5 h-5 rounded-full object-cover" referrerpolicy="no-referrer" />
+                    } @else {
+                      <div class="w-5 h-5 rounded-full bg-gray-300 flex items-center justify-center text-xs font-medium text-gray-600">
+                        {{ person.name.charAt(0) }}
+                      </div>
+                    }
+                    {{ person.name }}
                   </button>
                 }
               </div>
@@ -485,13 +474,23 @@ export class GraphComponent implements AfterViewInit {
   readonly linkSource = signal<{ ticketId: string; side: string } | null>(null);
   readonly mousePos = signal<{ x: number; y: number } | null>(null);
   readonly contextMenu = signal<{ x: number; y: number; edge: GraphEdge } | null>(null);
-  readonly statusPicker = signal<{ x: number; y: number; node: GraphNode } | null>(null);
+  readonly assigneePicker = signal<{ x: number; y: number; node: GraphNode } | null>(null);
+
+  readonly allAssignees = computed<Assignee[]>(() => {
+    const seen = new Map<string, Assignee>();
+    for (const ticket of this.tickets()) {
+      for (const a of ticket.assignees) {
+        if (!seen.has(a.id)) seen.set(a.id, a);
+      }
+    }
+    return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name));
+  });
   readonly selectedNodeIds = signal<Set<string>>(new Set());
   readonly selectionRect = signal<{ x: number; y: number; w: number; h: number } | null>(null);
   readonly groups = signal<GraphGroup[]>([]);
   readonly highlightedEpicId = signal<string | null>(null);
   readonly timelineMode = signal(false);
-  readonly timelineColumns = signal<{ label: string; x: number }[]>([]);
+  readonly timelineColumns = signal<{ label: string; x: number; points: number }[]>([]);
   readonly timelineGroupBy = signal<string>('__auto__');
   readonly timelineSortBy = signal<string>('__none__');
 
@@ -599,13 +598,13 @@ export class GraphComponent implements AfterViewInit {
   onEscape(): void {
     this.cancelLink();
     this.contextMenu.set(null);
-    this.statusPicker.set(null);
+    this.assigneePicker.set(null);
   }
 
   @HostListener('document:click')
   onDocumentClick(): void {
     this.contextMenu.set(null);
-    this.statusPicker.set(null);
+    this.assigneePicker.set(null);
   }
 
   toggleEpicHighlight(epicId: string): void {
@@ -660,55 +659,38 @@ export class GraphComponent implements AfterViewInit {
     return `${colors.bg} ${colors.border}`;
   }
 
-  getLegendDot(key: ColumnKey): string {
-    return LEGEND_ITEMS.find(l => l.key === key)?.dotClass || 'bg-gray-400';
-  }
+  // --- Assignee picker ---
 
-  isCurrentStatus(columnKey: ColumnKey): boolean {
-    const picker = this.statusPicker();
-    if (!picker) return false;
-    const currentKey = this.teamConfigService.getColumnKeyForStatus(picker.node.ticket.status);
-    return currentKey === columnKey;
-  }
-
-  // --- Status change ---
-
-  changeStatus(columnKey: ColumnKey): void {
-    const picker = this.statusPicker();
+  selectAssignee(assignee: Assignee | null): void {
+    const picker = this.assigneePicker();
     if (!picker) return;
 
     const team = this.teamConfigService.selectedTeam();
     if (!team) return;
 
-    const newStatus = this.teamConfigService.getFirstStatusForColumn(columnKey);
-    if (!newStatus) return;
-
     const ticketId = picker.node.ticket.notionId;
-    const previousStatus = picker.node.ticket.status;
+    const previousAssignees = picker.node.ticket.assignees;
+    const previousAssignee = picker.node.ticket.assignee;
 
-    if (newStatus === previousStatus) {
-      this.statusPicker.set(null);
-      return;
-    }
-
-    // Optimistic update
-    this.updateTicketStatus(ticketId, newStatus);
-    this.statusPicker.set(null);
+    const newAssignees = assignee ? [assignee] : [];
+    const newAssignee = assignee ? assignee.name : null;
+    this.updateTicketAssignee(ticketId, newAssignee, newAssignees);
+    this.assigneePicker.set(null);
 
     this.notionService.updatePageProperty(ticketId, {
-      [team.propertiesName.status]: { select: { name: newStatus } },
+      [team.propertiesName.assignedTo]: { people: assignee ? [{ id: assignee.id }] : [] },
     }).subscribe({
       error: err => {
-        console.error('Failed to update status:', err);
-        this.toastService.error('Erreur lors du changement de statut.');
-        this.updateTicketStatus(ticketId, previousStatus);
+        console.error('Failed to update assignee:', err);
+        this.toastService.error("Erreur lors du changement d'assignation.");
+        this.updateTicketAssignee(ticketId, previousAssignee, previousAssignees);
       },
     });
   }
 
-  private updateTicketStatus(ticketId: string, status: string): void {
-    this.tickets.update(ts => ts.map(t => t.notionId === ticketId ? { ...t, status } : t));
-    this.nodes.update(ns => ns.map(n => n.ticket.notionId === ticketId ? { ...n, ticket: { ...n.ticket, status } } : n));
+  private updateTicketAssignee(ticketId: string, assignee: string | null, assignees: Assignee[]): void {
+    this.tickets.update(ts => ts.map(t => t.notionId === ticketId ? { ...t, assignee, assignees } : t));
+    this.nodes.update(ns => ns.map(n => n.ticket.notionId === ticketId ? { ...n, ticket: { ...n.ticket, assignee, assignees } } : n));
   }
 
   // --- Link mode ---
@@ -736,7 +718,7 @@ export class GraphComponent implements AfterViewInit {
     if (this.dragMoved) return;
 
     // Open status picker
-    this.statusPicker.set({ x: event.clientX, y: event.clientY, node });
+    this.assigneePicker.set({ x: event.clientX, y: event.clientY, node });
   }
 
   private completeLink(targetId: string): void {
@@ -867,6 +849,7 @@ export class GraphComponent implements AfterViewInit {
     const savedRaw = localStorage.getItem(this.layoutKey);
     if (savedRaw) {
       nodes = this.restoreLayout(nodes);
+      nodes = this.resolveOverlaps(nodes);
     } else {
       this.groups.set([]);
     }
@@ -932,42 +915,60 @@ export class GraphComponent implements AfterViewInit {
     for (let i = 0; i <= maxLayer; i++) layerGroups.push([]);
     tickets.forEach(t => layerGroups[layers.get(t.notionId)!].push(t.notionId));
 
-    // Position bottom-up
-    const xPos = new Map<string, number>();
+    // Barycenter heuristic to minimize edge crossings
     const nodeW = GraphComponent.NODE_WIDTH;
     const colGap = 80;
 
-    // Start from deepest layer
-    for (let layer = maxLayer; layer >= 0; layer--) {
-      const group = layerGroups[layer];
+    for (let iter = 0; iter < 4; iter++) {
+      // Top-down sweep
+      for (let i = 1; i <= maxLayer; i++) {
+        const prevOrder = layerGroups[i - 1];
+        const posMap = new Map<string, number>();
+        prevOrder.forEach((id, idx) => posMap.set(id, idx));
 
-      group.forEach(id => {
-        const childIds = (children.get(id) || []).filter(c => ticketIds.has(c));
-        if (childIds.length > 0 && childIds.every(c => xPos.has(c))) {
-          // Center above children
-          const childXs = childIds.map(c => xPos.get(c)!);
-          xPos.set(id, (Math.min(...childXs) + Math.max(...childXs)) / 2);
-        }
-      });
-
-      // Position nodes that don't have positioned children yet (or have none)
-      const unpositioned = group.filter(id => !xPos.has(id));
-      const positioned = group.filter(id => xPos.has(id));
-
-      if (unpositioned.length > 0) {
-        // Find a starting x that doesn't overlap with positioned nodes
-        const takenXs = positioned.map(id => xPos.get(id)!).sort((a, b) => a - b);
-        let startX = 0;
-        if (takenXs.length > 0) {
-          // Place unpositioned nodes after positioned ones
-          startX = Math.max(...takenXs) + nodeW + colGap;
-        }
-        unpositioned.forEach((id, i) => {
-          xPos.set(id, startX + i * (nodeW + colGap));
+        layerGroups[i].sort((a, b) => {
+          const parentsA = (parents.get(a) || []).filter(p => posMap.has(p));
+          const parentsB = (parents.get(b) || []).filter(p => posMap.has(p));
+          const baryA = parentsA.length > 0
+            ? parentsA.reduce((sum, p) => sum + posMap.get(p)!, 0) / parentsA.length
+            : Infinity;
+          const baryB = parentsB.length > 0
+            ? parentsB.reduce((sum, p) => sum + posMap.get(p)!, 0) / parentsB.length
+            : Infinity;
+          return baryA - baryB;
         });
       }
 
-      // Resolve overlaps within the layer
+      // Bottom-up sweep
+      for (let i = maxLayer - 1; i >= 0; i--) {
+        const nextOrder = layerGroups[i + 1];
+        const posMap = new Map<string, number>();
+        nextOrder.forEach((id, idx) => posMap.set(id, idx));
+
+        layerGroups[i].sort((a, b) => {
+          const childrenA = (children.get(a) || []).filter(c => posMap.has(c));
+          const childrenB = (children.get(b) || []).filter(c => posMap.has(c));
+          const baryA = childrenA.length > 0
+            ? childrenA.reduce((sum, c) => sum + posMap.get(c)!, 0) / childrenA.length
+            : Infinity;
+          const baryB = childrenB.length > 0
+            ? childrenB.reduce((sum, c) => sum + posMap.get(c)!, 0) / childrenB.length
+            : Infinity;
+          return baryA - baryB;
+        });
+      }
+    }
+
+    // Phase A: sequential grid positions respecting barycenter order
+    const xPos = new Map<string, number>();
+    for (let layer = 0; layer <= maxLayer; layer++) {
+      layerGroups[layer].forEach((id, idx) => {
+        xPos.set(id, idx * (nodeW + colGap));
+      });
+    }
+
+    // Phase B: refine — shift toward connected nodes (2 passes)
+    const enforceSpacing = (group: string[]) => {
       const sorted = [...group].sort((a, b) => xPos.get(a)! - xPos.get(b)!);
       for (let i = 1; i < sorted.length; i++) {
         const prev = xPos.get(sorted[i - 1])!;
@@ -975,6 +976,32 @@ export class GraphComponent implements AfterViewInit {
         if (curr < prev + nodeW + colGap) {
           xPos.set(sorted[i], prev + nodeW + colGap);
         }
+      }
+    };
+
+    for (let pass = 0; pass < 2; pass++) {
+      // Bottom-up: center above children
+      for (let layer = maxLayer - 1; layer >= 0; layer--) {
+        for (const id of layerGroups[layer]) {
+          const childIds = (children.get(id) || []).filter(c => xPos.has(c));
+          if (childIds.length > 0) {
+            const avg = childIds.reduce((s, c) => s + xPos.get(c)!, 0) / childIds.length;
+            xPos.set(id, avg);
+          }
+        }
+        enforceSpacing(layerGroups[layer]);
+      }
+
+      // Top-down: shift toward parents
+      for (let layer = 1; layer <= maxLayer; layer++) {
+        for (const id of layerGroups[layer]) {
+          const parentIds = (parents.get(id) || []).filter(p => xPos.has(p));
+          if (parentIds.length > 0) {
+            const avg = parentIds.reduce((s, p) => s + xPos.get(p)!, 0) / parentIds.length;
+            xPos.set(id, avg);
+          }
+        }
+        enforceSpacing(layerGroups[layer]);
       }
     }
 
@@ -1113,14 +1140,18 @@ export class GraphComponent implements AfterViewInit {
       return a.localeCompare(b);
     });
 
-    const columns: { label: string; x: number }[] = [];
+    const columns: { label: string; x: number; points: number }[] = [];
     const nodes: GraphNode[] = [];
 
     sortedKeys.forEach((key, colIndex) => {
       const x = colIndex * colWidth + 100;
-      columns.push({ label: this.formatGroupLabel(key, groupBy), x: x + nodeW / 2 - 40 });
 
       let ticketsInCol = groups.get(key)!;
+      const points = ticketsInCol.reduce((sum, t) => {
+        const n = parseInt(t.complexity ?? '', 10);
+        return isNaN(n) ? sum : sum + n;
+      }, 0);
+      columns.push({ label: this.formatGroupLabel(key, groupBy), x: x + nodeW / 2 - 40, points });
       if (sortBy !== '__none__') {
         ticketsInCol = [...ticketsInCol].sort((a, b) =>
           this.getTicketSortValue(a, sortBy).localeCompare(this.getTicketSortValue(b, sortBy))
@@ -1172,7 +1203,7 @@ export class GraphComponent implements AfterViewInit {
   }
 
   onCanvasMouseDown(event: MouseEvent): void {
-    this.statusPicker.set(null);
+    this.assigneePicker.set(null);
     if (this.linkSource()) { this.cancelLink(); return; }
     if (this.draggingNode) return;
 
@@ -1295,7 +1326,7 @@ export class GraphComponent implements AfterViewInit {
   onNodeMouseDown(event: MouseEvent, node: GraphNode): void {
     if (this.linkSource()) return;
     event.stopPropagation();
-    this.statusPicker.set(null);
+    this.assigneePicker.set(null);
     this.dragMoved = false;
     const z = this.zoom();
     this.dragOffsetX = (event.clientX - this.panX()) / z - node.x;
@@ -1420,5 +1451,37 @@ export class GraphComponent implements AfterViewInit {
       }
     } catch {}
     return nodes;
+  }
+
+  private resolveOverlaps(nodes: GraphNode[]): GraphNode[] {
+    const nodeW = GraphComponent.NODE_WIDTH;
+    const nodeH = GraphComponent.NODE_HEIGHT;
+    const padding = 20;
+    const result = nodes.map(n => ({ ...n }));
+
+    for (let pass = 0; pass < 5; pass++) {
+      let anyOverlap = false;
+      for (let i = 0; i < result.length; i++) {
+        for (let j = i + 1; j < result.length; j++) {
+          const a = result[i];
+          const b = result[j];
+          const overlapX = (a.x < b.x + nodeW + padding) && (b.x < a.x + nodeW + padding);
+          const overlapY = (a.y < b.y + nodeH + padding) && (b.y < a.y + nodeH + padding);
+          if (overlapX && overlapY) {
+            anyOverlap = true;
+            const pushX = (a.x + nodeW + padding) - b.x;
+            const pushY = (a.y + nodeH + padding) - b.y;
+            if (pushX < pushY) {
+              b.x += pushX;
+            } else {
+              b.y += pushY;
+            }
+          }
+        }
+      }
+      if (!anyOverlap) break;
+    }
+
+    return result;
   }
 }
