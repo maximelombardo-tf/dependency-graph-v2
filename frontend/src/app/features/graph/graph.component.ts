@@ -126,12 +126,36 @@ const LEGEND_ITEMS: { key: ColumnKey; label: string; dotClass: string }[] = [
             class="p-1.5 rounded-md transition-colors"
             [class]="timelineMode() ? 'text-blue-600 bg-blue-100' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'"
             (click)="toggleTimeline()"
-            [title]="timelineMode() ? 'Vue dépendances' : 'Vue timeline par date'"
+            [title]="timelineMode() ? 'Vue dépendances' : 'Vue groupée'"
           >
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
           </button>
+          @if (timelineMode()) {
+            <div class="flex items-center gap-2 border-l border-gray-200 pl-3">
+              <span class="text-xs text-gray-500">Grouper par</span>
+              <select
+                class="rounded border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                [value]="timelineGroupBy()"
+                (change)="onTimelineGroupByChange($event)"
+              >
+                @for (opt of timelineGroupByOptions(); track opt.value) {
+                  <option [value]="opt.value">{{ opt.label }}</option>
+                }
+              </select>
+              <span class="text-xs text-gray-500">Trier par</span>
+              <select
+                class="rounded border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                [value]="timelineSortBy()"
+                (change)="onTimelineSortByChange($event)"
+              >
+                @for (opt of timelineSortByOptions(); track opt.value) {
+                  <option [value]="opt.value">{{ opt.label }}</option>
+                }
+              </select>
+            </div>
+          }
           @if (authService.userName()) {
             <span class="text-sm text-gray-600">{{ authService.userName() }}</span>
           }
@@ -468,6 +492,39 @@ export class GraphComponent implements AfterViewInit {
   readonly highlightedEpicId = signal<string | null>(null);
   readonly timelineMode = signal(false);
   readonly timelineColumns = signal<{ label: string; x: number }[]>([]);
+  readonly timelineGroupBy = signal<string>('__auto__');
+  readonly timelineSortBy = signal<string>('__none__');
+
+  readonly timelineGroupByOptions = computed<{ value: string; label: string }[]>(() => {
+    const opts: { value: string; label: string }[] = [
+      { value: '__auto__', label: 'Date (auto)' },
+      { value: 'status', label: 'Statut' },
+      { value: 'assignee', label: 'Assigné' },
+      { value: 'complexity', label: 'Complexité' },
+    ];
+    for (const field of this.teamConfigService.availableExtraFields()) {
+      if (!['status', 'assignee', 'complexity'].includes(field)) {
+        opts.push({ value: field, label: field });
+      }
+    }
+    return opts;
+  });
+
+  readonly timelineSortByOptions = computed<{ value: string; label: string }[]>(() => {
+    const opts: { value: string; label: string }[] = [
+      { value: '__none__', label: 'Aucun tri' },
+      { value: 'title', label: 'Titre' },
+      { value: 'status', label: 'Statut' },
+      { value: 'assignee', label: 'Assigné' },
+      { value: 'complexity', label: 'Complexité' },
+    ];
+    for (const field of this.teamConfigService.availableExtraFields()) {
+      if (!['title', 'status', 'assignee', 'complexity'].includes(field)) {
+        opts.push({ value: field, label: field });
+      }
+    }
+    return opts;
+  });
 
   readonly legendItems = LEGEND_ITEMS;
   readonly columnDefinitions = COLUMN_DEFINITIONS;
@@ -974,16 +1031,25 @@ export class GraphComponent implements AfterViewInit {
     }
   }
 
-  private getTimelineDateField(): string | null {
-    // Look for a date field in extraDisplayFields first
+  onTimelineGroupByChange(event: Event): void {
+    this.timelineGroupBy.set((event.target as HTMLSelectElement).value);
+    const tickets = this.tickets();
+    if (tickets.length > 0) this.buildGraph(tickets);
+  }
+
+  onTimelineSortByChange(event: Event): void {
+    this.timelineSortBy.set((event.target as HTMLSelectElement).value);
+    const tickets = this.tickets();
+    if (tickets.length > 0) this.buildGraph(tickets);
+  }
+
+  private getAutoDateField(): string | null {
     const displayFields = this.teamConfigService.extraDisplayFields();
     const available = this.teamConfigService.availableExtraFields();
     for (const field of displayFields) {
-      // Check if any ticket has an ISO date value for this field
       const sample = this.tickets().find(t => /^\d{4}-\d{2}-\d{2}/.test(t.extraFields[field] || ''));
       if (sample) return field;
     }
-    // Fallback: find any available field with "date" in its name
     for (const field of available) {
       if (field.toLowerCase().includes('date')) {
         const sample = this.tickets().find(t => /^\d{4}-\d{2}-\d{2}/.test(t.extraFields[field] || ''));
@@ -993,53 +1059,76 @@ export class GraphComponent implements AfterViewInit {
     return null;
   }
 
+  private getTicketGroupValue(ticket: Ticket, groupBy: string): string {
+    if (groupBy === '__auto__') {
+      const dateField = this.getAutoDateField();
+      const rawDate = dateField ? (ticket.extraFields[dateField] || '') : '';
+      return /^\d{4}-\d{2}-\d{2}/.test(rawDate) ? rawDate.substring(0, 10) : '__none__';
+    }
+    if (groupBy === 'status') return ticket.status || '__none__';
+    if (groupBy === 'assignee') return ticket.assignees.map(a => a.name).join(', ') || '__none__';
+    if (groupBy === 'complexity') return ticket.complexity || '__none__';
+    return ticket.extraFields[groupBy] || '__none__';
+  }
+
+  private formatGroupLabel(key: string, groupBy: string): string {
+    if (key === '__none__') return groupBy === '__auto__' ? 'Sans date' : 'Non défini';
+    if (groupBy === '__auto__') {
+      const formatter = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' });
+      return formatter.format(new Date(key));
+    }
+    return key;
+  }
+
+  private getTicketSortValue(ticket: Ticket, sortBy: string): string {
+    if (sortBy === 'title') return ticket.title;
+    if (sortBy === 'status') return ticket.status || '';
+    if (sortBy === 'assignee') return ticket.assignees.map(a => a.name).join(', ');
+    if (sortBy === 'complexity') return ticket.complexity || '';
+    return ticket.extraFields[sortBy] || '';
+  }
+
   private computeTimelineLayout(tickets: Ticket[]): GraphNode[] {
     if (tickets.length === 0) { this.timelineColumns.set([]); return []; }
 
-    const dateField = this.getTimelineDateField();
+    const groupBy = this.timelineGroupBy();
+    const sortBy = this.timelineSortBy();
     const nodeW = GraphComponent.NODE_WIDTH;
     const nodeH = GraphComponent.NODE_HEIGHT;
-    const colWidth = nodeW + 60;
-    const rowGap = nodeH + 30;
+    const colWidth = nodeW + 100;
+    const rowGap = nodeH + 40;
     const headerY = 80;
 
-    // Group tickets by date
     const groups = new Map<string, Ticket[]>();
     for (const ticket of tickets) {
-      const rawDate = dateField ? (ticket.extraFields[dateField] || '') : '';
-      const dateKey = /^\d{4}-\d{2}-\d{2}/.test(rawDate) ? rawDate.substring(0, 10) : '__none__';
-      const list = groups.get(dateKey) ?? [];
+      const key = this.getTicketGroupValue(ticket, groupBy);
+      const list = groups.get(key) ?? [];
       list.push(ticket);
-      groups.set(dateKey, list);
+      groups.set(key, list);
     }
 
-    // Sort date keys chronologically, "no date" at the end
     const sortedKeys = Array.from(groups.keys()).sort((a, b) => {
       if (a === '__none__') return 1;
       if (b === '__none__') return -1;
       return a.localeCompare(b);
     });
 
-    // Build column labels and node positions
     const columns: { label: string; x: number }[] = [];
     const nodes: GraphNode[] = [];
-    const formatter = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' });
 
     sortedKeys.forEach((key, colIndex) => {
       const x = colIndex * colWidth + 100;
-      const label = key === '__none__'
-        ? 'Sans date'
-        : formatter.format(new Date(key));
-      columns.push({ label, x: x + nodeW / 2 - 40 });
+      columns.push({ label: this.formatGroupLabel(key, groupBy), x: x + nodeW / 2 - 40 });
 
-      const ticketsInCol = groups.get(key)!;
+      let ticketsInCol = groups.get(key)!;
+      if (sortBy !== '__none__') {
+        ticketsInCol = [...ticketsInCol].sort((a, b) =>
+          this.getTicketSortValue(a, sortBy).localeCompare(this.getTicketSortValue(b, sortBy))
+        );
+      }
+
       ticketsInCol.forEach((ticket, rowIndex) => {
-        nodes.push({
-          ticket,
-          x,
-          y: headerY + rowIndex * rowGap,
-          dragging: false,
-        });
+        nodes.push({ ticket, x, y: headerY + rowIndex * rowGap, dragging: false });
       });
     });
 
