@@ -12,8 +12,9 @@ import {
   ChangeDetectionStrategy,
 } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { firstValueFrom } from 'rxjs';
-import html2canvas from 'html2canvas';
+import { firstValueFrom, of } from 'rxjs';
+import { catchError } from 'rxjs/operators';
+import { toPng } from 'html-to-image';
 import { SelectorComponent } from '../selector/selector.component';
 import { AuthService } from '../../core/services/auth.service';
 import { TeamConfigService } from '../../core/services/team-config.service';
@@ -65,12 +66,45 @@ interface LayoutData {
   panY: number;
 }
 
-const ANNOTATION_EMOJIS: Record<AnnotationType, string> = {
-  star: '⭐',
-  hourglass: '⏳',
-  checkbox: '✅',
-  flag: '🚩',
-  warning: '⚠️',
+interface AnnotationSvg {
+  color: string;
+  paths: { d: string; fill?: string; stroke?: string; strokeWidth?: number }[];
+  viewBox?: string;
+}
+
+const ANNOTATION_SVGS: Record<AnnotationType, AnnotationSvg> = {
+  star: {
+    color: '#F59E0B',
+    paths: [{ d: 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z', fill: '#F59E0B', stroke: '#D97706', strokeWidth: 1 }],
+  },
+  hourglass: {
+    color: '#3B82F6',
+    paths: [
+      { d: 'M5 22h14M5 2h14', fill: 'none', stroke: '#3B82F6', strokeWidth: 2 },
+      { d: 'M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22M7 2v4.172a2 2 0 0 1 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2', fill: '#BFDBFE', stroke: '#3B82F6', strokeWidth: 1.5 },
+    ],
+  },
+  checkbox: {
+    color: '#22C55E',
+    paths: [
+      { d: 'M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z', fill: '#DCFCE7', stroke: '#22C55E', strokeWidth: 1.5 },
+    ],
+  },
+  flag: {
+    color: '#EF4444',
+    paths: [
+      { d: 'M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z', fill: '#FEE2E2', stroke: '#EF4444', strokeWidth: 1.5 },
+      { d: 'M4 22V15', fill: 'none', stroke: '#EF4444', strokeWidth: 2 },
+    ],
+  },
+  warning: {
+    color: '#F97316',
+    paths: [
+      { d: 'M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z', fill: '#FFEDD5', stroke: '#F97316', strokeWidth: 1.5 },
+      { d: 'M12 9v4', fill: 'none', stroke: '#F97316', strokeWidth: 2 },
+      { d: 'M12 17h.01', fill: 'none', stroke: '#F97316', strokeWidth: 2 },
+    ],
+  },
 };
 
 const ANNOTATION_TYPES: AnnotationType[] = ['star', 'hourglass', 'checkbox', 'flag', 'warning'];
@@ -123,11 +157,24 @@ const GROUP_COLORS = [
           <div class="flex items-center gap-0.5 border-l border-gray-200 pl-2">
             @for (type of annotationTypes; track type) {
               <button
-                class="w-7 h-7 flex items-center justify-center rounded text-base transition-colors"
+                class="w-7 h-7 flex items-center justify-center rounded transition-colors"
                 [class]="addAnnotationMode() === type ? 'bg-blue-100 ring-2 ring-blue-400' : 'hover:bg-gray-100'"
                 [title]="'Ajouter ' + type"
                 (click)="toggleAnnotationMode(type)"
-              >{{ annotationEmojis[type] }}</button>
+              >
+                <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  @for (p of annotationSvgs[type].paths; track $index) {
+                    <path
+                      [attr.d]="p.d"
+                      [attr.fill]="p.fill ?? 'none'"
+                      [attr.stroke]="p.stroke ?? 'none'"
+                      [attr.stroke-width]="p.strokeWidth ?? 0"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  }
+                </svg>
+              </button>
             }
           </div>
           <button
@@ -330,15 +377,28 @@ const GROUP_COLORS = [
                 <!-- Canvas annotations -->
                 @for (annotation of annotations(); track annotation.id) {
                   <div
-                    class="absolute select-none cursor-grab active:cursor-grabbing flex items-center justify-center text-2xl"
+                    class="absolute select-none cursor-grab active:cursor-grabbing"
                     [style.left.px]="annotation.x"
                     [style.top.px]="annotation.y"
-                    [style.z-index]="8"
-                    style="width: 40px; height: 40px; user-select: none;"
-                    [title]="'Clic droit pour supprimer'"
+                    [style.z-index]="60"
+                    style="width: 64px; height: 64px;"
+                    title="Clic droit pour supprimer"
                     (mousedown)="onAnnotationMouseDown($event, annotation)"
                     (contextmenu)="onAnnotationRightClick($event, annotation)"
-                  >{{ annotationEmojis[annotation.type] }}</div>
+                  >
+                    <svg viewBox="0 0 24 24" width="64" height="64" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.25));">
+                      @for (p of annotationSvgs[annotation.type].paths; track $index) {
+                        <path
+                          [attr.d]="p.d"
+                          [attr.fill]="p.fill ?? 'none'"
+                          [attr.stroke]="p.stroke ?? 'none'"
+                          [attr.stroke-width]="p.strokeWidth ?? 0"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        />
+                      }
+                    </svg>
+                  </div>
                 }
 
                 <!-- Ticket nodes -->
@@ -592,7 +652,7 @@ export class GraphComponent implements AfterViewInit {
   readonly annotations = signal<CanvasAnnotation[]>([]);
   readonly addAnnotationMode = signal<AnnotationType | null>(null);
   readonly annotationTypes = ANNOTATION_TYPES;
-  readonly annotationEmojis = ANNOTATION_EMOJIS;
+  readonly annotationSvgs = ANNOTATION_SVGS;
   readonly highlightedEpicId = signal<string | null>(null);
   readonly timelineMode = signal(false);
   readonly timelineColumns = signal<{ label: string; x: number; points: number }[]>([]);
@@ -1206,12 +1266,12 @@ export class GraphComponent implements AfterViewInit {
     const canvas = this.canvasRef?.nativeElement;
     if (!canvas) return;
     try {
-      const imgCanvas = await html2canvas(canvas, { useCORS: true, scale: 2 });
+      const dataUrl = await toPng(canvas, { pixelRatio: 2, skipFonts: true });
       const link = document.createElement('a');
       const team = this.teamConfigService.selectedTeam();
       const date = new Date().toISOString().slice(0, 10);
       link.download = `graph-${team?.name ?? 'export'}-${date}.png`;
-      link.href = imgCanvas.toDataURL('image/png');
+      link.href = dataUrl;
       link.click();
     } catch (err) {
       console.error('Screenshot failed:', err);
@@ -1667,19 +1727,21 @@ export class GraphComponent implements AfterViewInit {
     const epics = this.teamConfigService.selectedEpics();
     if (!team || epics.length === 0) return null;
     const epicKey = this.layoutEpicKey;
-    try {
-      const data = await firstValueFrom(
-        this.http.get<LayoutData>(`/api/layouts/${team.id}/${epicKey}`)
-      );
-      if (data) {
-        try { localStorage.setItem(this.layoutKey, JSON.stringify(data)); } catch {}
-      }
+
+    const data = await firstValueFrom(
+      this.http.get<LayoutData>(`/api/layouts/${team.id}/${epicKey}`).pipe(
+        catchError(() => of(null))
+      )
+    );
+
+    if (data) {
+      try { localStorage.setItem(this.layoutKey, JSON.stringify(data)); } catch {}
       return data;
-    } catch {
-      const raw = localStorage.getItem(this.layoutKey);
-      if (!raw) return null;
-      try { return JSON.parse(raw) as LayoutData; } catch { return null; }
     }
+
+    const raw = localStorage.getItem(this.layoutKey);
+    if (!raw) return null;
+    try { return JSON.parse(raw) as LayoutData; } catch { return null; }
   }
 
   private applyLayout(nodes: GraphNode[], data: LayoutData): GraphNode[] {
