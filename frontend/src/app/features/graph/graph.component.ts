@@ -11,6 +11,9 @@ import {
   HostListener,
   ChangeDetectionStrategy,
 } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { firstValueFrom } from 'rxjs';
+import html2canvas from 'html2canvas';
 import { SelectorComponent } from '../selector/selector.component';
 import { AuthService } from '../../core/services/auth.service';
 import { TeamConfigService } from '../../core/services/team-config.service';
@@ -43,6 +46,34 @@ interface GraphGroup {
   h: number;
   color: string; // hex color
 }
+
+type AnnotationType = 'star' | 'hourglass' | 'checkbox' | 'flag' | 'warning';
+
+interface CanvasAnnotation {
+  id: string;
+  type: AnnotationType;
+  x: number;
+  y: number;
+}
+
+interface LayoutData {
+  positions: Record<string, { x: number; y: number }>;
+  groups: GraphGroup[];
+  annotations: CanvasAnnotation[];
+  zoom: number;
+  panX: number;
+  panY: number;
+}
+
+const ANNOTATION_EMOJIS: Record<AnnotationType, string> = {
+  star: '⭐',
+  hourglass: '⏳',
+  checkbox: '✅',
+  flag: '🚩',
+  warning: '⚠️',
+};
+
+const ANNOTATION_TYPES: AnnotationType[] = ['star', 'hourglass', 'checkbox', 'flag', 'warning'];
 
 const GROUP_COLORS = [
   { name: 'Bleu',   hex: '#3B82F6' },
@@ -89,6 +120,16 @@ const GROUP_COLORS = [
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
             </svg>
           </button>
+          <div class="flex items-center gap-0.5 border-l border-gray-200 pl-2">
+            @for (type of annotationTypes; track type) {
+              <button
+                class="w-7 h-7 flex items-center justify-center rounded text-base transition-colors"
+                [class]="addAnnotationMode() === type ? 'bg-blue-100 ring-2 ring-blue-400' : 'hover:bg-gray-100'"
+                [title]="'Ajouter ' + type"
+                (click)="toggleAnnotationMode(type)"
+              >{{ annotationEmojis[type] }}</button>
+            }
+          </div>
           <button
             class="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md"
             (click)="autoLayout()"
@@ -132,6 +173,16 @@ const GROUP_COLORS = [
               </select>
             </div>
           }
+          <button
+            class="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md"
+            (click)="takeScreenshot()"
+            title="Télécharger un screenshot"
+          >
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
           @if (authService.userName()) {
             <span class="text-sm text-gray-600">{{ authService.userName() }}</span>
           }
@@ -190,8 +241,8 @@ const GROUP_COLORS = [
             <div
               #canvas
               class="absolute inset-0 overflow-hidden bg-gray-50"
-              [class.cursor-crosshair]="!!linkSource()"
-              [class.cursor-default]="!linkSource()"
+              [class.cursor-crosshair]="!!linkSource() || !!addAnnotationMode()"
+              [class.cursor-default]="!linkSource() && !addAnnotationMode()"
               style="background-image: radial-gradient(circle, #d1d5db 1px, transparent 1px); background-size: 24px 24px;"
               (mousedown)="onCanvasMouseDown($event)"
               (mousemove)="onCanvasMouseMove($event)"
@@ -276,6 +327,20 @@ const GROUP_COLORS = [
                   </div>
                 }
 
+                <!-- Canvas annotations -->
+                @for (annotation of annotations(); track annotation.id) {
+                  <div
+                    class="absolute select-none cursor-grab active:cursor-grabbing flex items-center justify-center text-2xl"
+                    [style.left.px]="annotation.x"
+                    [style.top.px]="annotation.y"
+                    [style.z-index]="8"
+                    style="width: 40px; height: 40px; user-select: none;"
+                    [title]="'Clic droit pour supprimer'"
+                    (mousedown)="onAnnotationMouseDown($event, annotation)"
+                    (contextmenu)="onAnnotationRightClick($event, annotation)"
+                  >{{ annotationEmojis[annotation.type] }}</div>
+                }
+
                 <!-- Ticket nodes -->
                 @for (node of nodes(); track node.ticket.notionId) {
                   <div
@@ -285,6 +350,7 @@ const GROUP_COLORS = [
                     [style.z-index]="node.dragging ? 50 : 10"
                     [style.opacity]="isNodeDimmed(node.ticket) ? 0.2 : 1"
                     (mousedown)="onNodeMouseDown($event, node)"
+                    (contextmenu)="onNodeRightClick($event, node)"
                     [class.ring-2]="selectedNodeIds().has(node.ticket.notionId) && !node.dragging"
                     [class.ring-blue-400]="selectedNodeIds().has(node.ticket.notionId) && !node.dragging"
                   >
@@ -443,6 +509,38 @@ const GROUP_COLORS = [
                 </button>
               </div>
             }
+
+            <!-- Node context menu -->
+            @if (nodeContextMenu()) {
+              <div
+                class="fixed z-50 bg-white rounded-lg shadow-lg border border-gray-200 py-1"
+                [style.left.px]="nodeContextMenu()!.x"
+                [style.top.px]="nodeContextMenu()!.y"
+                (mousedown)="$event.stopPropagation()"
+                (click)="$event.stopPropagation()"
+              >
+                <button class="w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 text-left" (click)="requestDeleteTicket()">
+                  Supprimer le ticket
+                </button>
+              </div>
+            }
+
+            <!-- Delete ticket confirmation dialog -->
+            @if (deleteConfirm()) {
+              <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/30" (click)="cancelDeleteTicket()">
+                <div class="bg-white rounded-xl shadow-2xl p-6 w-80 max-w-full" (click)="$event.stopPropagation()">
+                  <p class="text-sm font-semibold text-gray-800 mb-1">Supprimer ce ticket ?</p>
+                  <p class="text-xs text-gray-500 mb-4">
+                    <span class="font-mono">{{ deleteConfirm()!.ticket.id }}</span> — {{ deleteConfirm()!.ticket.title }}
+                  </p>
+                  <p class="text-xs text-gray-400 mb-5">Le ticket sera archivé dans Notion. Cette action est réversible depuis Notion.</p>
+                  <div class="flex gap-2 justify-end">
+                    <button class="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-600 hover:bg-gray-50" (click)="cancelDeleteTicket()">Annuler</button>
+                    <button class="px-3 py-1.5 text-sm rounded-md bg-red-600 text-white hover:bg-red-700" (click)="confirmDeleteTicket()">Supprimer</button>
+                  </div>
+                </div>
+              </div>
+            }
           </div>
         }
       } @else {
@@ -458,6 +556,7 @@ export class GraphComponent implements AfterViewInit {
   readonly teamConfigService = inject(TeamConfigService);
   private readonly notionService = inject(NotionService);
   private readonly toastService = inject(ToastService);
+  private readonly http = inject(HttpClient);
 
   @ViewChild('canvas') canvasRef!: ElementRef<HTMLElement>;
 
@@ -474,6 +573,8 @@ export class GraphComponent implements AfterViewInit {
   readonly linkSource = signal<{ ticketId: string; side: string } | null>(null);
   readonly mousePos = signal<{ x: number; y: number } | null>(null);
   readonly contextMenu = signal<{ x: number; y: number; edge: GraphEdge } | null>(null);
+  readonly nodeContextMenu = signal<{ x: number; y: number; node: GraphNode } | null>(null);
+  readonly deleteConfirm = signal<GraphNode | null>(null);
   readonly assigneePicker = signal<{ x: number; y: number; node: GraphNode } | null>(null);
 
   readonly allAssignees = computed<Assignee[]>(() => {
@@ -488,6 +589,10 @@ export class GraphComponent implements AfterViewInit {
   readonly selectedNodeIds = signal<Set<string>>(new Set());
   readonly selectionRect = signal<{ x: number; y: number; w: number; h: number } | null>(null);
   readonly groups = signal<GraphGroup[]>([]);
+  readonly annotations = signal<CanvasAnnotation[]>([]);
+  readonly addAnnotationMode = signal<AnnotationType | null>(null);
+  readonly annotationTypes = ANNOTATION_TYPES;
+  readonly annotationEmojis = ANNOTATION_EMOJIS;
   readonly highlightedEpicId = signal<string | null>(null);
   readonly timelineMode = signal(false);
   readonly timelineColumns = signal<{ label: string; x: number; points: number }[]>([]);
@@ -547,6 +652,10 @@ export class GraphComponent implements AfterViewInit {
   private resizeStartMouseX = 0;
   private resizeStartMouseY = 0;
 
+  private draggingAnnotation: CanvasAnnotation | null = null;
+  private annotationDragOffsetX = 0;
+  private annotationDragOffsetY = 0;
+
   static readonly NODE_WIDTH = 240;
   static readonly NODE_HEIGHT = 120;
 
@@ -596,6 +705,9 @@ export class GraphComponent implements AfterViewInit {
 
   @HostListener('document:keydown.escape')
   onEscape(): void {
+    this.addAnnotationMode.set(null);
+    this.nodeContextMenu.set(null);
+    this.deleteConfirm.set(null);
     this.cancelLink();
     this.contextMenu.set(null);
     this.assigneePicker.set(null);
@@ -604,6 +716,7 @@ export class GraphComponent implements AfterViewInit {
   @HostListener('document:click')
   onDocumentClick(): void {
     this.contextMenu.set(null);
+    this.nodeContextMenu.set(null);
     this.assigneePicker.set(null);
   }
 
@@ -756,6 +869,45 @@ export class GraphComponent implements AfterViewInit {
     this.mousePos.set(null);
   }
 
+  // --- Delete node (archive ticket in Notion) ---
+
+  onNodeRightClick(event: MouseEvent, node: GraphNode): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.nodeContextMenu.set({ x: event.clientX, y: event.clientY, node });
+  }
+
+  requestDeleteTicket(): void {
+    const menu = this.nodeContextMenu();
+    if (!menu) return;
+    this.deleteConfirm.set(menu.node);
+    this.nodeContextMenu.set(null);
+  }
+
+  confirmDeleteTicket(): void {
+    const node = this.deleteConfirm();
+    if (!node) return;
+    this.deleteConfirm.set(null);
+
+    const notionId = node.ticket.notionId;
+    this.tickets.update(ts => ts.filter(t => t.notionId !== notionId));
+    this.nodes.update(ns => ns.filter(n => n.ticket.notionId !== notionId));
+    this.edges.update(es => es.filter(e => e.from !== notionId && e.to !== notionId));
+
+    this.notionService.archivePage(notionId).subscribe({
+      next: () => this.toastService.success('Ticket supprimé.'),
+      error: err => {
+        console.error('Failed to archive ticket:', err);
+        this.toastService.error('Erreur lors de la suppression du ticket.');
+        this.fetchTickets();
+      },
+    });
+  }
+
+  cancelDeleteTicket(): void {
+    this.deleteConfirm.set(null);
+  }
+
   // --- Delete edge ---
 
   onEdgeRightClick(event: MouseEvent, edge: { id: string; from: string; to: string }): void {
@@ -802,10 +954,10 @@ export class GraphComponent implements AfterViewInit {
 
     this.loading.set(true);
     this.notionService.getTicketsForEpics(team, epics.map(e => e.id)).subscribe({
-      next: tickets => {
+      next: async tickets => {
         this.tickets.set(tickets);
         this.updateAvailableFields(tickets);
-        this.buildGraph(tickets);
+        await this.buildGraph(tickets);
         this.loading.set(false);
       },
       error: err => {
@@ -826,7 +978,7 @@ export class GraphComponent implements AfterViewInit {
     this.teamConfigService.setAvailableExtraFields(Array.from(fieldSet));
   }
 
-  private buildGraph(tickets: Ticket[]): void {
+  private async buildGraph(tickets: Ticket[]): Promise<void> {
     const ticketIds = new Set(tickets.map(t => t.notionId));
     const edges: GraphEdge[] = [];
     for (const ticket of tickets) {
@@ -845,16 +997,16 @@ export class GraphComponent implements AfterViewInit {
 
     let nodes = this.computeLayout(tickets, edges);
 
-    // Try to restore saved positions; only center if no saved layout
-    const savedRaw = localStorage.getItem(this.layoutKey);
-    if (savedRaw) {
-      nodes = this.restoreLayout(nodes);
+    const savedData = await this.fetchLayout();
+    if (savedData) {
+      nodes = this.applyLayout(nodes, savedData);
       nodes = this.resolveOverlaps(nodes);
     } else {
       this.groups.set([]);
+      this.annotations.set([]);
     }
     this.nodes.set(nodes);
-    if (!savedRaw) {
+    if (!savedData) {
       this.centerView(nodes);
     }
   }
@@ -1050,24 +1202,39 @@ export class GraphComponent implements AfterViewInit {
     this.saveLayout();
   }
 
+  async takeScreenshot(): Promise<void> {
+    const canvas = this.canvasRef?.nativeElement;
+    if (!canvas) return;
+    try {
+      const imgCanvas = await html2canvas(canvas, { useCORS: true, scale: 2 });
+      const link = document.createElement('a');
+      const team = this.teamConfigService.selectedTeam();
+      const date = new Date().toISOString().slice(0, 10);
+      link.download = `graph-${team?.name ?? 'export'}-${date}.png`;
+      link.href = imgCanvas.toDataURL('image/png');
+      link.click();
+    } catch (err) {
+      console.error('Screenshot failed:', err);
+      this.toastService.error('Impossible de générer le screenshot.');
+    }
+  }
+
   toggleTimeline(): void {
     this.timelineMode.update(v => !v);
     const tickets = this.tickets();
-    if (tickets.length > 0) {
-      this.buildGraph(tickets);
-    }
+    if (tickets.length > 0) void this.buildGraph(tickets);
   }
 
   onTimelineGroupByChange(event: Event): void {
     this.timelineGroupBy.set((event.target as HTMLSelectElement).value);
     const tickets = this.tickets();
-    if (tickets.length > 0) this.buildGraph(tickets);
+    if (tickets.length > 0) void this.buildGraph(tickets);
   }
 
   onTimelineSortByChange(event: Event): void {
     this.timelineSortBy.set((event.target as HTMLSelectElement).value);
     const tickets = this.tickets();
-    if (tickets.length > 0) this.buildGraph(tickets);
+    if (tickets.length > 0) void this.buildGraph(tickets);
   }
 
   private getAutoDateField(): string | null {
@@ -1210,6 +1377,19 @@ export class GraphComponent implements AfterViewInit {
     // Middle mouse button → no action (browser default)
     if (event.button === 1) return;
 
+    // In annotation mode, place an annotation on click
+    const annotationType = this.addAnnotationMode();
+    if (annotationType) {
+      const rect = this.canvasRef.nativeElement.getBoundingClientRect();
+      const z = this.zoom();
+      const x = (event.clientX - rect.left - this.panX()) / z - 20;
+      const y = (event.clientY - rect.top - this.panY()) / z - 20;
+      this.annotations.update(as => [...as, { id: crypto.randomUUID(), type: annotationType, x, y }]);
+      this.addAnnotationMode.set(null);
+      this.saveLayout();
+      return;
+    }
+
     // Left click on canvas → start selection rectangle
     const rect = this.canvasRef.nativeElement.getBoundingClientRect();
     this.isSelecting = true;
@@ -1227,6 +1407,16 @@ export class GraphComponent implements AfterViewInit {
     if (this.linkSource()) {
       const rect = this.canvasRef.nativeElement.getBoundingClientRect();
       this.mousePos.set({ x: event.clientX - rect.left, y: event.clientY - rect.top });
+    }
+
+    if (this.draggingAnnotation) {
+      const z = this.zoom();
+      const rect = this.canvasRef.nativeElement.getBoundingClientRect();
+      const x = (event.clientX - rect.left - this.panX()) / z - this.annotationDragOffsetX;
+      const y = (event.clientY - rect.top - this.panY()) / z - this.annotationDragOffsetY;
+      const id = this.draggingAnnotation.id;
+      this.annotations.update(as => as.map(a => a.id === id ? { ...a, x, y } : a));
+      return;
     }
 
     if (this.resizingGroup) {
@@ -1308,6 +1498,11 @@ export class GraphComponent implements AfterViewInit {
   }
 
   onCanvasMouseUp(event?: MouseEvent): void {
+    if (this.draggingAnnotation) {
+      this.draggingAnnotation = null;
+      this.saveLayout();
+      return;
+    }
     if (this.draggingNode) {
       this.nodes.update(nodes => nodes.map(n => n.ticket.notionId === this.draggingNode!.ticket.notionId ? { ...n, dragging: false } : n));
       this.draggingNode = null;
@@ -1350,6 +1545,28 @@ export class GraphComponent implements AfterViewInit {
       this.selectedNodeIds.set(new Set());
       this.dragSelectedOffsets.clear();
     }
+  }
+
+  // --- Annotations ---
+
+  toggleAnnotationMode(type: AnnotationType): void {
+    this.addAnnotationMode.update(current => current === type ? null : type);
+  }
+
+  onAnnotationMouseDown(event: MouseEvent, annotation: CanvasAnnotation): void {
+    event.stopPropagation();
+    const z = this.zoom();
+    const rect = this.canvasRef.nativeElement.getBoundingClientRect();
+    this.draggingAnnotation = annotation;
+    this.annotationDragOffsetX = (event.clientX - rect.left - this.panX()) / z - annotation.x;
+    this.annotationDragOffsetY = (event.clientY - rect.top - this.panY()) / z - annotation.y;
+  }
+
+  onAnnotationRightClick(event: MouseEvent, annotation: CanvasAnnotation): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.annotations.update(as => as.filter(a => a.id !== annotation.id));
+    this.saveLayout();
   }
 
   // --- Groups ---
@@ -1408,7 +1625,7 @@ export class GraphComponent implements AfterViewInit {
     this.resizeStartMouseY = event.clientY;
   }
 
-  // --- Persistence (localStorage) ---
+  // --- Persistence (backend + localStorage fallback) ---
 
   private get layoutKey(): string {
     const team = this.teamConfigService.selectedTeam();
@@ -1417,39 +1634,67 @@ export class GraphComponent implements AfterViewInit {
     return `graph_layout_${team?.id}_${epicKey}`;
   }
 
+  private get layoutEpicKey(): string {
+    return this.teamConfigService.selectedEpics().map(e => e.id).sort().join('_');
+  }
+
   saveLayout(): void {
     const positions: Record<string, { x: number; y: number }> = {};
     for (const n of this.nodes()) {
       positions[n.ticket.notionId] = { x: n.x, y: n.y };
     }
-    const data = {
+    const data: LayoutData = {
       positions,
       groups: this.groups(),
+      annotations: this.annotations(),
       zoom: this.zoom(),
       panX: this.panX(),
       panY: this.panY(),
     };
+
     try { localStorage.setItem(this.layoutKey, JSON.stringify(data)); } catch {}
+
+    const team = this.teamConfigService.selectedTeam();
+    if (!team) return;
+    const epicKey = this.layoutEpicKey;
+    this.http.put(`/api/layouts/${team.id}/${epicKey}`, data).subscribe({
+      error: err => console.error('Failed to save layout to backend:', err),
+    });
   }
 
-  private restoreLayout(nodes: GraphNode[]): GraphNode[] {
+  private async fetchLayout(): Promise<LayoutData | null> {
+    const team = this.teamConfigService.selectedTeam();
+    const epics = this.teamConfigService.selectedEpics();
+    if (!team || epics.length === 0) return null;
+    const epicKey = this.layoutEpicKey;
     try {
-      const raw = localStorage.getItem(this.layoutKey);
-      if (!raw) return nodes;
-      const data = JSON.parse(raw);
-
-      if (data.groups) this.groups.set(data.groups);
-      if (data.zoom) this.zoom.set(data.zoom);
-      if (data.panX !== undefined) this.panX.set(data.panX);
-      if (data.panY !== undefined) this.panY.set(data.panY);
-
-      if (data.positions) {
-        return nodes.map(n => {
-          const pos = data.positions[n.ticket.notionId];
-          return pos ? { ...n, x: pos.x, y: pos.y } : n;
-        });
+      const data = await firstValueFrom(
+        this.http.get<LayoutData>(`/api/layouts/${team.id}/${epicKey}`)
+      );
+      if (data) {
+        try { localStorage.setItem(this.layoutKey, JSON.stringify(data)); } catch {}
       }
-    } catch {}
+      return data;
+    } catch {
+      const raw = localStorage.getItem(this.layoutKey);
+      if (!raw) return null;
+      try { return JSON.parse(raw) as LayoutData; } catch { return null; }
+    }
+  }
+
+  private applyLayout(nodes: GraphNode[], data: LayoutData): GraphNode[] {
+    if (data.groups) this.groups.set(data.groups);
+    if (data.annotations) this.annotations.set(data.annotations);
+    if (data.zoom) this.zoom.set(data.zoom);
+    if (data.panX !== undefined) this.panX.set(data.panX);
+    if (data.panY !== undefined) this.panY.set(data.panY);
+
+    if (data.positions) {
+      return nodes.map(n => {
+        const pos = data.positions[n.ticket.notionId];
+        return pos ? { ...n, x: pos.x, y: pos.y } : n;
+      });
+    }
     return nodes;
   }
 

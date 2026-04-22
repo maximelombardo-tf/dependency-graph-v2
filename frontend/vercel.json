@@ -17,6 +17,10 @@
       "destination": "/api/notion"
     },
     {
+      "source": "/api/layouts/:path*",
+      "destination": "/api/layouts"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }

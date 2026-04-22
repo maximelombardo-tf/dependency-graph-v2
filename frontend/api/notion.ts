@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { Redis } from '@upstash/redis';
+import { decryptToken } from './_lib/crypto.js';
 
 const FALLBACK_TOKEN = process.env['NOTION_API_TOKEN'] || '';
 const NOTION_API_VERSION = process.env['NOTION_API_VERSION'] || '2022-06-28';
@@ -16,7 +17,8 @@ async function getNotionToken(teamId: string | undefined): Promise<string> {
   try {
     const redis = getRedis();
     const team = await redis.get<{ notionApiToken?: string }>(`team:${teamId}`);
-    return team?.notionApiToken || FALLBACK_TOKEN;
+    const raw = team?.notionApiToken;
+    return raw ? decryptToken(raw) : FALLBACK_TOKEN;
   } catch {
     return FALLBACK_TOKEN;
   }

@@ -44,6 +44,12 @@ export class NotionService {
     );
   }
 
+  archivePage(pageId: string): Observable<void> {
+    return this.http.patch<void>(`${this.baseUrl}/pages/${pageId}`, { archived: true }).pipe(
+      this.retryOnRateLimit(),
+    );
+  }
+
   getEpicsForTeam(teamConfig: TeamConfig): Observable<Epic[]> {
     const filter = teamConfig.epicFilter?.length
       ? this.buildEpicFilter(teamConfig.epicFilter)

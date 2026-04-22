@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { Redis } from '@upstash/redis';
 import { verifyAdminToken } from '../_lib/jwt.js';
+import { encryptToken } from '../_lib/crypto.js';
 import { randomUUID } from 'crypto';
 
 const CORS_HEADERS = {
@@ -61,7 +62,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const id = randomUUID();
-    const team = { id, name, epicDatabaseId, usDatabaseId, propertiesName, epicFilter, ticketFilter, notionApiToken };
+    const team = { id, name, epicDatabaseId, usDatabaseId, propertiesName, epicFilter, ticketFilter, notionApiToken: encryptToken(notionApiToken) };
 
     await redis.set(`team:${id}`, team);
     const ids: string[] = (await redis.get('teams:list')) ?? [];
@@ -90,7 +91,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       propertiesName,
       epicFilter,
       ticketFilter,
-      notionApiToken: notionApiToken || existing['notionApiToken'],
+      notionApiToken: notionApiToken ? encryptToken(notionApiToken) : existing['notionApiToken'],
     };
 
     await redis.set(`team:${id}`, team);
