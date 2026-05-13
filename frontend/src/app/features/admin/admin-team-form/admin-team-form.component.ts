@@ -86,183 +86,193 @@ import { TeamConfig, PropertiesName, StatusMapping, EpicFilter, COLUMN_DEFINITIO
           </fieldset>
 
           <!-- ── Section 2 : Noms des propriétés Notion ── -->
-          <fieldset class="space-y-3">
-            <legend class="text-sm font-semibold text-gray-800 uppercase tracking-wide">
-              Noms des propriétés Notion
-            </legend>
-            <p class="text-xs text-gray-500">
-              Adaptez chaque valeur au nom exact du champ dans votre base Notion.
-            </p>
+          <details [open]="hasCustomProperties" class="group border border-gray-200 rounded-md">
+            <summary class="flex items-center justify-between px-4 py-3 cursor-pointer select-none list-none text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded-md">
+              <span>Noms des propriétés Notion</span>
+              <svg class="w-4 h-4 text-gray-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </summary>
+            <fieldset class="px-4 pb-4 pt-3 space-y-3 border-t border-gray-100">
+              <p class="text-xs text-gray-500">
+                Adaptez chaque valeur au nom exact du champ dans votre base Notion. Les valeurs par défaut fonctionnent pour la plupart des bases Notion standard.
+              </p>
 
-            <div class="grid grid-cols-2 gap-3">
-              @for (field of propertyFields; track field.key) {
-                <div>
-                  <label class="block text-xs font-medium text-gray-600 mb-0.5">{{ field.label }}</label>
-                  <input
-                    type="text"
-                    [(ngModel)]="properties[field.key]"
-                    [name]="'prop_' + field.key"
-                    class="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    [placeholder]="field.placeholder"
-                  />
-                </div>
-              }
-            </div>
-          </fieldset>
+              <div class="grid grid-cols-2 gap-3">
+                @for (field of propertyFields; track field.key) {
+                  <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-0.5">{{ field.label }}</label>
+                    <input
+                      type="text"
+                      [(ngModel)]="properties[field.key]"
+                      [name]="'prop_' + field.key"
+                      class="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      [placeholder]="field.placeholder"
+                    />
+                  </div>
+                }
+              </div>
+            </fieldset>
+          </details>
 
           <!-- ── Section 3 : Mapping des statuts → colonnes kanban ── -->
-          <fieldset class="space-y-3">
-            <legend class="text-sm font-semibold text-gray-800 uppercase tracking-wide">
-              Mapping statuts Notion → colonnes kanban
-            </legend>
-            <p class="text-xs text-gray-500">
-              Pour chaque colonne, indiquez les noms de statuts Notion correspondants, séparés par des virgules.
-              Laissez vide si la colonne ne s'applique pas.
-            </p>
+          <details [open]="hasStatusMappings" class="group border border-gray-200 rounded-md">
+            <summary class="flex items-center justify-between px-4 py-3 cursor-pointer select-none list-none text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded-md">
+              <span>Mapping statuts → colonnes kanban</span>
+              <svg class="w-4 h-4 text-gray-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </summary>
+            <fieldset class="px-4 pb-4 pt-3 space-y-3 border-t border-gray-100">
+              <p class="text-xs text-gray-500">
+                Pour chaque colonne, indiquez les noms de statuts Notion correspondants, séparés par des virgules.
+                Laissez vide si la colonne ne s'applique pas.
+              </p>
 
-            <div class="space-y-2">
-              @for (col of columnDefinitions; track col.key) {
-                <div class="flex items-start gap-3">
-                  <label class="w-40 shrink-0 text-xs font-medium text-gray-600 pt-1.5">{{ col.displayName }}</label>
-                  <input
-                    type="text"
-                    [(ngModel)]="statusMappings[col.key]"
-                    [name]="'status_' + col.key"
-                    class="flex-1 rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="ex: Backlog, A faire..."
-                  />
-                </div>
-              }
-            </div>
-          </fieldset>
+              <div class="space-y-2">
+                @for (col of columnDefinitions; track col.key) {
+                  <div class="flex items-start gap-3">
+                    <label class="w-40 shrink-0 text-xs font-medium text-gray-600 pt-1.5">{{ col.displayName }}</label>
+                    <input
+                      type="text"
+                      [(ngModel)]="statusMappings[col.key]"
+                      [name]="'status_' + col.key"
+                      class="flex-1 rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="ex: Backlog, A faire..."
+                    />
+                  </div>
+                }
+              </div>
+            </fieldset>
+          </details>
 
           <!-- ── Section 4 : Filtres Epic (optionnel) ── -->
-          <fieldset class="space-y-3">
-            <legend class="text-sm font-semibold text-gray-800 uppercase tracking-wide">
-              Filtres sur les epics
-              <span class="text-xs font-normal text-gray-400 ml-1">(optionnel)</span>
-            </legend>
-            <p class="text-xs text-gray-500">
-              Permet de ne montrer que certaines epics. Laissez vide pour tout afficher.
-            </p>
+          <details [open]="epicFilters.length > 0" class="group border border-gray-200 rounded-md">
+            <summary class="flex items-center justify-between px-4 py-3 cursor-pointer select-none list-none text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded-md">
+              <span>Filtres sur les epics <span class="text-xs font-normal text-gray-400 ml-1">(optionnel)</span></span>
+              <svg class="w-4 h-4 text-gray-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </summary>
+            <fieldset class="px-4 pb-4 pt-3 space-y-3 border-t border-gray-100">
+              <p class="text-xs text-gray-500">
+                Permet de ne montrer que certaines epics. Laissez vide pour tout afficher.
+              </p>
 
-            @for (filter of epicFilters; track $index) {
-              <div class="flex items-end gap-2">
-                <div class="flex-1">
-                  <label class="block text-xs font-medium text-gray-600 mb-0.5">Propriété</label>
-                  <input
-                    type="text"
-                    [(ngModel)]="filter.property"
-                    [name]="'filter_prop_' + $index"
-                    class="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="ex: Status"
-                  />
-                </div>
-                <div class="w-36">
-                  <label class="block text-xs font-medium text-gray-600 mb-0.5">Type</label>
-                  <select
-                    [(ngModel)]="filter.type"
-                    [name]="'filter_type_' + $index"
-                    class="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              @for (filter of epicFilters; track $index) {
+                <div class="flex items-end gap-2">
+                  <div class="flex-1">
+                    <label class="block text-xs font-medium text-gray-600 mb-0.5">Propriété</label>
+                    <input
+                      type="text"
+                      [(ngModel)]="filter.property"
+                      [name]="'filter_prop_' + $index"
+                      class="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="ex: Status"
+                    />
+                  </div>
+                  <div class="w-36">
+                    <label class="block text-xs font-medium text-gray-600 mb-0.5">Type</label>
+                    <select
+                      [(ngModel)]="filter.type"
+                      [name]="'filter_type_' + $index"
+                      class="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="select">select</option>
+                      <option value="status">status</option>
+                      <option value="multi_select">multi_select</option>
+                    </select>
+                  </div>
+                  <div class="flex-1">
+                    <label class="block text-xs font-medium text-gray-600 mb-0.5">Valeur</label>
+                    <input
+                      type="text"
+                      [(ngModel)]="filter.value"
+                      [name]="'filter_val_' + $index"
+                      class="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="ex: Delivery Team"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    (click)="removeFilter('epic', $index)"
+                    class="px-2 py-1.5 text-red-500 hover:text-red-700 text-sm"
+                    title="Supprimer ce filtre"
                   >
-                    <option value="select">select</option>
-                    <option value="status">status</option>
-                    <option value="multi_select">multi_select</option>
-                  </select>
+                    &times;
+                  </button>
                 </div>
-                <div class="flex-1">
-                  <label class="block text-xs font-medium text-gray-600 mb-0.5">Valeur</label>
-                  <input
-                    type="text"
-                    [(ngModel)]="filter.value"
-                    [name]="'filter_val_' + $index"
-                    class="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="ex: Delivery Team"
-                  />
-                </div>
-                <button
-                  type="button"
-                  (click)="removeFilter('epic', $index)"
-                  class="px-2 py-1.5 text-red-500 hover:text-red-700 text-sm"
-                  title="Supprimer ce filtre"
-                >
-                  &times;
-                </button>
-              </div>
-            }
+              }
 
-            <button
-              type="button"
-              (click)="addFilter('epic')"
-              class="text-sm text-blue-600 hover:text-blue-800"
-            >
-              + Ajouter un filtre
-            </button>
-          </fieldset>
+              <button
+                type="button"
+                (click)="addFilter('epic')"
+                class="text-sm text-blue-600 hover:text-blue-800"
+              >
+                + Ajouter un filtre
+              </button>
+            </fieldset>
+          </details>
 
           <!-- ── Section 5 : Filtres Tickets (optionnel) ── -->
-          <fieldset class="space-y-3">
-            <legend class="text-sm font-semibold text-gray-800 uppercase tracking-wide">
-              Filtres sur les tickets
-              <span class="text-xs font-normal text-gray-400 ml-1">(optionnel)</span>
-            </legend>
-            <p class="text-xs text-gray-500">
-              Permet de filtrer les tickets affichés (ex: par équipe). Plusieurs filtres sur la même propriété sont combinés en OU.
-            </p>
+          <details [open]="ticketFilters.length > 0" class="group border border-gray-200 rounded-md">
+            <summary class="flex items-center justify-between px-4 py-3 cursor-pointer select-none list-none text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded-md">
+              <span>Filtres sur les tickets <span class="text-xs font-normal text-gray-400 ml-1">(optionnel)</span></span>
+              <svg class="w-4 h-4 text-gray-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </summary>
+            <fieldset class="px-4 pb-4 pt-3 space-y-3 border-t border-gray-100">
+              <p class="text-xs text-gray-500">
+                Permet de filtrer les tickets affichés (ex: par équipe). Plusieurs filtres sur la même propriété sont combinés en OU.
+              </p>
 
-            @for (filter of ticketFilters; track $index) {
-              <div class="flex items-end gap-2">
-                <div class="flex-1">
-                  <label class="block text-xs font-medium text-gray-600 mb-0.5">Propriété</label>
-                  <input
-                    type="text"
-                    [(ngModel)]="filter.property"
-                    [name]="'tfilter_prop_' + $index"
-                    class="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="ex: Equipe"
-                  />
-                </div>
-                <div class="w-36">
-                  <label class="block text-xs font-medium text-gray-600 mb-0.5">Type</label>
-                  <select
-                    [(ngModel)]="filter.type"
-                    [name]="'tfilter_type_' + $index"
-                    class="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              @for (filter of ticketFilters; track $index) {
+                <div class="flex items-end gap-2">
+                  <div class="flex-1">
+                    <label class="block text-xs font-medium text-gray-600 mb-0.5">Propriété</label>
+                    <input
+                      type="text"
+                      [(ngModel)]="filter.property"
+                      [name]="'tfilter_prop_' + $index"
+                      class="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="ex: Equipe"
+                    />
+                  </div>
+                  <div class="w-36">
+                    <label class="block text-xs font-medium text-gray-600 mb-0.5">Type</label>
+                    <select
+                      [(ngModel)]="filter.type"
+                      [name]="'tfilter_type_' + $index"
+                      class="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="select">select</option>
+                      <option value="status">status</option>
+                      <option value="multi_select">multi_select</option>
+                    </select>
+                  </div>
+                  <div class="flex-1">
+                    <label class="block text-xs font-medium text-gray-600 mb-0.5">Valeur</label>
+                    <input
+                      type="text"
+                      [(ngModel)]="filter.value"
+                      [name]="'tfilter_val_' + $index"
+                      class="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="ex: Flash"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    (click)="removeFilter('ticket', $index)"
+                    class="px-2 py-1.5 text-red-500 hover:text-red-700 text-sm"
+                    title="Supprimer ce filtre"
                   >
-                    <option value="select">select</option>
-                    <option value="status">status</option>
-                    <option value="multi_select">multi_select</option>
-                  </select>
+                    &times;
+                  </button>
                 </div>
-                <div class="flex-1">
-                  <label class="block text-xs font-medium text-gray-600 mb-0.5">Valeur</label>
-                  <input
-                    type="text"
-                    [(ngModel)]="filter.value"
-                    [name]="'tfilter_val_' + $index"
-                    class="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="ex: Flash"
-                  />
-                </div>
-                <button
-                  type="button"
-                  (click)="removeFilter('ticket', $index)"
-                  class="px-2 py-1.5 text-red-500 hover:text-red-700 text-sm"
-                  title="Supprimer ce filtre"
-                >
-                  &times;
-                </button>
-              </div>
-            }
+              }
 
-            <button
-              type="button"
-              (click)="addFilter('ticket')"
-              class="text-sm text-blue-600 hover:text-blue-800"
-            >
-              + Ajouter un filtre
-            </button>
-          </fieldset>
+              <button
+                type="button"
+                (click)="addFilter('ticket')"
+                class="text-sm text-blue-600 hover:text-blue-800"
+              >
+                + Ajouter un filtre
+              </button>
+            </fieldset>
+          </details>
 
           @if (error()) {
             <p class="text-sm text-red-600">{{ error() }}</p>
@@ -342,6 +352,18 @@ export class AdminTeamFormComponent implements OnInit {
 
   readonly loading = signal(false);
   readonly error = signal('');
+
+  get hasCustomProperties(): boolean {
+    const defaults: Record<string, string> = {
+      id: 'ID', title: 'Name', status: 'Status', complexity: 'Size',
+      bloque: 'Bloque', epic: 'Epic', epicName: 'Name', assignedTo: 'Assign',
+    };
+    return Object.keys(defaults).some(k => this.properties[k] !== defaults[k]);
+  }
+
+  get hasStatusMappings(): boolean {
+    return Object.values(this.statusMappings).some(v => v.trim().length > 0);
+  }
 
   ngOnInit(): void {
     const t = this.team();
