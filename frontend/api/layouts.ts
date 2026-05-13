@@ -32,8 +32,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === 'GET') {
     const data = await redis.get(redisKey);
-    if (!data) return res.status(404).json(null);
-    return res.status(200).json(data);
+    return res.status(200).json(data ?? null);
   }
 
   if (req.method === 'PUT') {

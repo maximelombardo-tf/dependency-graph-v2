@@ -29,7 +29,7 @@ import { Epic } from '../../core/models/ticket.model';
           } @else {
             <option value="" disabled>Choisir une équipe</option>
             @for (team of teamConfigService.teams(); track team.name) {
-              <option [value]="team.name">{{ team.name }}</option>
+              <option [value]="team.name" [selected]="team.name === teamConfigService.selectedTeam()?.name">{{ team.name }}</option>
             }
           }
         </select>
