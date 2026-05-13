@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, of, expand, reduce, map, retry, timer, EMPTY } from 'rxjs';
+import { Observable, of, expand, reduce, map, switchMap, retry, timer, EMPTY } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { TeamConfig, EpicFilterCondition } from '../models/team-config.model';
 import { Ticket, Assignee, Epic, NotionPage, NotionQueryResponse } from '../models/ticket.model';
@@ -51,32 +51,24 @@ export class NotionService {
   }
 
   getEpicsForTeam(teamConfig: TeamConfig): Observable<Epic[]> {
+    const toEpics = (pages: NotionPage[]) =>
+      pages.map(page => this.mapToEpic(page, teamConfig))
+        .sort((a, b) => a.title.localeCompare(b.title));
+
     const filter = teamConfig.epicFilter?.length
       ? this.buildEpicFilter(teamConfig.epicFilter)
       : undefined;
 
-    return this.querySinglePage(teamConfig.epicDatabaseId, filter).pipe(
-      map(pages =>
-        pages.map(page => this.mapToEpic(page, teamConfig))
-          .sort((a, b) => a.title.localeCompare(b.title))
+    return this.queryDatabase(teamConfig.epicDatabaseId, filter).pipe(
+      map(toEpics),
+      switchMap(epics =>
+        epics.length > 0 || !filter
+          ? of(epics)
+          : this.queryDatabase(teamConfig.epicDatabaseId).pipe(map(toEpics))
       ),
     );
   }
 
-  /** Fetch only the first page (100 results max) - no pagination. */
-  private querySinglePage(databaseId: string, filter?: object, sorts?: object[]): Observable<NotionPage[]> {
-    const body: Record<string, any> = { page_size: 100 };
-    if (filter) body['filter'] = filter;
-    if (sorts) body['sorts'] = sorts;
-
-    return this.http.post<NotionQueryResponse>(
-      `${this.baseUrl}/databases/${databaseId}/query`,
-      body,
-    ).pipe(
-      map(response => response.results),
-      this.retryOnRateLimit(),
-    );
-  }
 
   getTicketsForEpic(teamConfig: TeamConfig, epicId: string): Observable<Ticket[]> {
     return this.getTicketsForEpics(teamConfig, [epicId]);
@@ -120,7 +112,7 @@ export class NotionService {
     }
 
     const filter = this.buildEpicFilter(teamConfig.ticketFilter);
-    return this.querySinglePage(teamConfig.usDatabaseId, filter).pipe(
+    return this.queryDatabase(teamConfig.usDatabaseId, filter).pipe(
       map(pages => {
         const epicIds = new Set<string>();
         for (const page of pages) {
