@@ -1,7 +1,7 @@
 import { Component, inject, signal, effect, untracked, HostListener } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { forkJoin, of } from 'rxjs';
+import { forkJoin, of, Subscription } from 'rxjs';
 import { TeamConfigService } from '../../core/services/team-config.service';
 import { NotionService } from '../../core/services/notion.service';
 import { TeamConfig } from '../../core/models/team-config.model';
@@ -12,37 +12,28 @@ import { Epic } from '../../core/models/ticket.model';
   standalone: true,
   template: `
     <div class="flex items-center gap-4 p-4 bg-white border-b border-gray-200">
-      <!-- Team: locked badge or dropdown -->
-      @if (teamLockedByRoute()) {
-        <div class="flex items-center gap-2">
-          <span class="text-sm font-medium text-gray-700">Équipe</span>
-          <span class="px-3 py-1.5 text-sm font-medium text-gray-900 bg-gray-100 rounded-md">
-            {{ teamConfigService.selectedTeam()?.name }}
-          </span>
-        </div>
-      } @else {
-        <div class="flex items-center gap-2">
-          <label for="team-select" class="text-sm font-medium text-gray-700">Équipe</label>
-          <select
-            id="team-select"
-            class="rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            [value]="teamConfigService.selectedTeam()?.name || ''"
-            [disabled]="teamConfigService.loadingTeams()"
-            (change)="onTeamChange($event)"
-          >
-            @if (teamConfigService.loadingTeams()) {
-              <option value="" disabled>Chargement...</option>
-            } @else if (teamConfigService.teams().length === 0) {
-              <option value="" disabled>Aucune équipe configurée</option>
-            } @else {
-              <option value="" disabled>Choisir une équipe</option>
-              @for (team of teamConfigService.teams(); track team.name) {
-                <option [value]="team.name">{{ team.name }}</option>
-              }
+      <!-- Team dropdown (always visible) -->
+      <div class="flex items-center gap-2">
+        <label for="team-select" class="text-sm font-medium text-gray-700">Équipe</label>
+        <select
+          id="team-select"
+          class="rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          [value]="teamConfigService.selectedTeam()?.name || ''"
+          [disabled]="teamConfigService.loadingTeams()"
+          (change)="onTeamChange($event)"
+        >
+          @if (teamConfigService.loadingTeams()) {
+            <option value="" disabled>Chargement...</option>
+          } @else if (teamConfigService.teams().length === 0) {
+            <option value="" disabled>Aucune équipe configurée</option>
+          } @else {
+            <option value="" disabled>Choisir une équipe</option>
+            @for (team of teamConfigService.teams(); track team.name) {
+              <option [value]="team.name">{{ team.name }}</option>
             }
-          </select>
-        </div>
-      }
+          }
+        </select>
+      </div>
 
       <!-- Epic multi-select -->
       <div class="flex items-center gap-2 relative">
@@ -70,17 +61,25 @@ import { Epic } from '../../core/models/ticket.model';
 
         @if (openDropdown() === 'epic') {
           <div class="absolute top-full left-8 mt-1 z-50 bg-white rounded-md border border-gray-200 shadow-lg w-72 max-h-64 overflow-y-auto">
-            @if (epics().length > 3) {
-              <div class="sticky top-0 bg-white border-b border-gray-100 p-2">
-                <input
-                  class="w-full rounded border border-gray-200 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
-                  placeholder="Rechercher..."
-                  [value]="searchQuery()"
-                  (input)="onSearch($event)"
-                  (click)="$event.stopPropagation()"
-                />
-              </div>
-            }
+            <div class="sticky top-0 bg-white border-b border-gray-100">
+              @if (epics().length > 3) {
+                <div class="p-2">
+                  <input
+                    class="w-full rounded border border-gray-200 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
+                    placeholder="Rechercher..."
+                    [value]="searchQuery()"
+                    (input)="onSearch($event)"
+                    (click)="$event.stopPropagation()"
+                  />
+                </div>
+              }
+              <button
+                class="w-full text-left px-3 py-1.5 text-xs text-blue-600 hover:bg-blue-50 font-medium"
+                (click)="onToggleAllEpics(); $event.stopPropagation()"
+              >
+                {{ allFilteredSelected() ? 'Tout désélectionner' : 'Tout sélectionner' }}
+              </button>
+            </div>
             <div class="py-1">
               @for (epic of filteredEpics(); track epic.id) {
                 <label
@@ -165,17 +164,23 @@ export class SelectorComponent {
   private readonly route = inject(ActivatedRoute);
 
   private readonly params = toSignal(this.route.paramMap);
+  private epicSub: Subscription | null = null;
 
   readonly epics = signal<Epic[]>([]);
   readonly loadingEpics = signal(false);
   readonly openDropdown = signal<'epic' | 'fields' | null>(null);
   readonly searchQuery = signal('');
-  readonly teamLockedByRoute = signal(false);
 
   readonly filteredEpics = () => {
     const query = this.searchQuery().toLowerCase();
     if (!query) return this.epics();
     return this.epics().filter(e => e.title.toLowerCase().includes(query));
+  };
+
+  readonly allFilteredSelected = () => {
+    const filtered = this.filteredEpics();
+    if (filtered.length === 0) return false;
+    return filtered.every(e => this.isEpicSelected(e));
   };
 
   constructor() {
@@ -188,7 +193,6 @@ export class SelectorComponent {
       untracked(() => {
         const teamSlug = paramMap.get('teamName');
         if (teamSlug) {
-          this.teamLockedByRoute.set(true);
           const decoded = decodeURIComponent(teamSlug);
           const team = teams.find(t => TeamConfigService.slugify(t.name) === decoded || t.name === decoded);
           if (team && team.name !== this.teamConfigService.selectedTeam()?.name) {
@@ -199,7 +203,6 @@ export class SelectorComponent {
             this.router.navigate([`/${currentPath}`], { replaceUrl: true });
           }
         } else {
-          this.teamLockedByRoute.set(false);
           // No team in URL → redirect to last used team if available
           const restoredTeam = this.teamConfigService.selectedTeam();
           if (restoredTeam) {
@@ -269,7 +272,22 @@ export class SelectorComponent {
     this.searchQuery.set((event.target as HTMLInputElement).value);
   }
 
+  onToggleAllEpics(): void {
+    const filtered = this.filteredEpics();
+    if (this.allFilteredSelected()) {
+      const deselected = this.teamConfigService.selectedEpics().filter(
+        s => !filtered.some(f => f.id === s.id),
+      );
+      this.teamConfigService.setEpics(deselected);
+    } else {
+      const current = this.teamConfigService.selectedEpics();
+      const toAdd = filtered.filter(f => !current.some(s => s.id === f.id));
+      this.teamConfigService.setEpics([...current, ...toAdd]);
+    }
+  }
+
   private fetchEpics(team: TeamConfig): void {
+    this.epicSub?.unsubscribe();
     this.loadingEpics.set(true);
 
     const epics$ = this.notionService.getEpicsForTeam(team);
@@ -277,7 +295,7 @@ export class SelectorComponent {
       ? this.notionService.getRelevantEpicIds(team)
       : of(null);
 
-    forkJoin([epics$, relevantIds$]).subscribe({
+    this.epicSub = forkJoin([epics$, relevantIds$]).subscribe({
       next: ([epics, relevantIds]) => {
         let filtered = epics;
         if (relevantIds !== null && relevantIds.size > 0) {
@@ -285,6 +303,14 @@ export class SelectorComponent {
           if (matched.length > 0) filtered = matched;
         }
         this.epics.set(filtered);
+
+        // Remove stale selections that no longer exist in the fetched list
+        const validIds = new Set(filtered.map(e => e.id));
+        const stillValid = this.teamConfigService.selectedEpics().filter(e => validIds.has(e.id));
+        if (stillValid.length !== this.teamConfigService.selectedEpics().length) {
+          this.teamConfigService.setEpics(stillValid);
+        }
+
         this.loadingEpics.set(false);
       },
       error: err => {

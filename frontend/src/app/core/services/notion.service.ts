@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, of, expand, reduce, map, switchMap, retry, timer, EMPTY } from 'rxjs';
+import { Observable, expand, reduce, map, switchMap, retry, timer, EMPTY } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { TeamConfig, EpicFilterCondition } from '../models/team-config.model';
 import { Ticket, Assignee, Epic, NotionPage, NotionQueryResponse } from '../models/ticket.model';
@@ -59,13 +59,22 @@ export class NotionService {
       ? this.buildEpicFilter(teamConfig.epicFilter)
       : undefined;
 
-    return this.queryDatabase(teamConfig.epicDatabaseId, filter).pipe(
-      map(toEpics),
-      switchMap(epics =>
-        epics.length > 0 || !filter
-          ? of(epics)
-          : this.queryDatabase(teamConfig.epicDatabaseId).pipe(map(toEpics))
+    if (!filter) {
+      return this.queryDatabase(teamConfig.epicDatabaseId).pipe(map(toEpics));
+    }
+
+    // Single probe request (page_size:1) to check if the filter matches before
+    // committing to full pagination — avoids fetching all N pages twice when the
+    // filter config is stale.
+    return this.queryDatabasePage(teamConfig.epicDatabaseId, { page_size: 1, filter }, null).pipe(
+      this.retryOnRateLimit(),
+      switchMap(probe =>
+        this.queryDatabase(
+          teamConfig.epicDatabaseId,
+          probe.results.length > 0 ? filter : undefined,
+        )
       ),
+      map(toEpics),
     );
   }
 
