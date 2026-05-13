@@ -127,6 +127,13 @@ const GROUP_COLORS = [
   standalone: true,
   imports: [SelectorComponent, RouterLink],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: [`
+    @keyframes progress-slide {
+      0% { left: -60%; width: 60%; }
+      100% { left: 110%; width: 60%; }
+    }
+    .progress-bar-inner { position: absolute; top: 0; bottom: 0; border-radius: 9999px; background: #3b82f6; animation: progress-slide 1.4s ease-in-out infinite; }
+  `],
   template: `
     <div class="min-h-screen flex flex-col">
       <header class="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-200 shrink-0">
@@ -247,8 +254,11 @@ const GROUP_COLORS = [
 
       @if (teamConfigService.hasSelection()) {
         @if (loading()) {
-          <div class="flex-1 flex items-center justify-center">
-            <div class="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+          <div class="flex-1 flex flex-col items-center justify-center gap-3">
+            <div class="relative w-56 h-1 bg-gray-200 rounded-full overflow-hidden">
+              <div class="progress-bar-inner"></div>
+            </div>
+            <p class="text-xs text-gray-400">Chargement... {{ notionService.requestCount() }} pages Notion</p>
           </div>
         } @else {
           <div class="flex-1 relative">
@@ -614,7 +624,7 @@ const GROUP_COLORS = [
 export class GraphComponent implements AfterViewInit {
   readonly authService = inject(AuthService);
   readonly teamConfigService = inject(TeamConfigService);
-  private readonly notionService = inject(NotionService);
+  readonly notionService = inject(NotionService);
   private readonly toastService = inject(ToastService);
   private readonly http = inject(HttpClient);
 
@@ -1013,6 +1023,7 @@ export class GraphComponent implements AfterViewInit {
     if (!team || epics.length === 0) return;
 
     this.loading.set(true);
+    this.notionService.resetRequestCount();
     this.notionService.getTicketsForEpics(team, epics.map(e => e.id)).subscribe({
       next: async tickets => {
         this.tickets.set(tickets);

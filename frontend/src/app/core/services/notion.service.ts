@@ -1,6 +1,6 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, expand, reduce, map, switchMap, retry, timer, EMPTY } from 'rxjs';
+import { Observable, expand, reduce, map, switchMap, retry, timer, EMPTY, of, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { TeamConfig, EpicFilterCondition } from '../models/team-config.model';
 import { Ticket, Assignee, Epic, NotionPage, NotionQueryResponse } from '../models/ticket.model';
@@ -9,6 +9,12 @@ import { Ticket, Assignee, Epic, NotionPage, NotionQueryResponse } from '../mode
 export class NotionService {
   private readonly http = inject(HttpClient);
   private readonly baseUrl = `${environment.apiUrl}/notion`;
+
+  readonly requestCount = signal(0);
+
+  resetRequestCount(): void {
+    this.requestCount.set(0);
+  }
 
   queryDatabase(databaseId: string, filter?: object, sorts?: object[]): Observable<NotionPage[]> {
     const body: Record<string, any> = { page_size: 100 };
@@ -35,7 +41,7 @@ export class NotionService {
     return this.http.post<NotionQueryResponse>(
       `${this.baseUrl}/databases/${databaseId}/query`,
       payload,
-    );
+    ).pipe(tap(() => this.requestCount.update(n => n + 1)));
   }
 
   updatePageProperty(pageId: string, properties: Record<string, any>): Observable<any> {

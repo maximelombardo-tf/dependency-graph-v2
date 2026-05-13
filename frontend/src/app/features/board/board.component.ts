@@ -33,6 +33,13 @@ interface ColumnData {
   selector: 'app-board',
   standalone: true,
   imports: [SelectorComponent, KanbanColumnComponent, DependencyOverlayComponent, RouterLink],
+  styles: [`
+    @keyframes progress-slide {
+      0% { left: -60%; width: 60%; }
+      100% { left: 110%; width: 60%; }
+    }
+    .progress-bar-inner { position: absolute; top: 0; bottom: 0; border-radius: 9999px; background: #3b82f6; animation: progress-slide 1.4s ease-in-out infinite; }
+  `],
   template: `
     <div class="min-h-screen flex flex-col">
       <header class="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-200 shrink-0">
@@ -75,8 +82,11 @@ interface ColumnData {
 
       @if (teamConfigService.hasSelection()) {
         @if (loading()) {
-          <div class="flex-1 flex items-center justify-center">
-            <div class="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+          <div class="flex-1 flex flex-col items-center justify-center gap-3">
+            <div class="relative w-56 h-1 bg-gray-200 rounded-full overflow-hidden">
+              <div class="progress-bar-inner"></div>
+            </div>
+            <p class="text-xs text-gray-400">Chargement... {{ notionService.requestCount() }} pages Notion</p>
           </div>
         } @else if (error()) {
           <div class="flex-1 flex items-center justify-center">
@@ -162,7 +172,7 @@ export class BoardComponent implements AfterViewInit {
   readonly authService = inject(AuthService);
   readonly teamConfigService = inject(TeamConfigService);
   readonly dependencyService = inject(DependencyService);
-  private readonly notionService = inject(NotionService);
+  readonly notionService = inject(NotionService);
   private readonly toastService = inject(ToastService);
 
   @ViewChild('boardContainer') boardContainerRef!: ElementRef<HTMLElement>;
@@ -243,6 +253,7 @@ export class BoardComponent implements AfterViewInit {
 
     this.loading.set(true);
     this.error.set(null);
+    this.notionService.resetRequestCount();
 
     this.notionService.getTicketsForEpics(team, epics.map(e => e.id)).subscribe({
       next: tickets => {
